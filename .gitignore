@@ -3,4 +3,3 @@ data/certbot
 .vscode
 .idea
 database.db
-flask/serverenv
