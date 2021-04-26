@@ -52,7 +52,7 @@ services:
     image: redis:6.2.2
     command: redis-server /data/redis-server.conf
     volumes:
-      - ./redis/data:/data
+      - ./redis:/data
     networks:
       - internal-network
 

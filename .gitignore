@@ -5,3 +5,5 @@ data/certbot
 database.db
 flask/serverenv
 certbot/conf
+redis/logs.log
+redis/dump.rdb
