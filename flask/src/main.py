@@ -5,8 +5,8 @@ import os
 import random
 import redis
 import sys
-from server.authentication import verify_token
-from server.database.database import init_db, log_price_query
+from src.authentication.authentication import verify_token
+from src.database.database import init_db, log_price_query
 
 ADMIN_SDK_KEY = 'sportfolios-431c6-firebase-adminsdk-bq76v-f490ad544c.json'
 FILE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -20,7 +20,7 @@ def get_prices(assets: list):
 
 app = Flask(__name__)
 init_db()
-cred = credentials.Certificate(os.path.join(FILE_DIR, ADMIN_SDK_KEY))
+cred = credentials.Certificate(os.path.join(BASE_DIR, ADMIN_SDK_KEY))
 default_app = firebase_admin.initialize_app(cred)
 db = firestore.client()
 

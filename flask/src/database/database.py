@@ -7,7 +7,7 @@ BASE_DIR = '/var/www'
 
 def init_db():
 
-    conn = sqlite3.connect(os.path.join(BASE_DIR, 'server/database/database.db'))
+    conn = sqlite3.connect(os.path.join(BASE_DIR, 'database.db'))
     c = conn.cursor()
 
     c.execute(''' SELECT count(name) FROM sqlite_master WHERE type='table' AND name='price_requests' ''')
@@ -35,7 +35,7 @@ def log_price_query(info: dict, markets: list):
     
     print(os.listdir())
     print(os.getcwd())
-    with sqlite3.connect(os.path.join(BASE_DIR, 'server/database/database.db')) as con:
+    with sqlite3.connect(os.path.join(BASE_DIR, 'database.db')) as con:
         cur = con.cursor()
         cur.execute(
             f"INSERT INTO price_requests (username, email, uid, auth_time, server_time, markets) VALUES (?,?,?,?,?,?)",

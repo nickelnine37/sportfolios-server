@@ -4,3 +4,4 @@ data/certbot
 .idea
 database.db
 flask/serverenv
+certbot/conf
