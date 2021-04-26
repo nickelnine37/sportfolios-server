@@ -20,3 +20,26 @@ This is a small process that regularly checks for SSL certificate expiry, and re
 
  
 
+### Files overview
+
+```
+- docker-compose.yml           # main docker-compose file
+- init-letsencrypt.sh          # bash script to run on new server - sets up SSL certificates
+redis
+  - dump.rdb                   # the redis AOF backup file
+  - redis-server.conf          # conf file for redis
+  - logs.log                   # redis logfile
+certbot
+  conf                         # all SSL config files and folders
+  www                          # not sure..  nothing?
+nginx
+  - app.conf                   # NGINX config file
+flask
+  serverenv                    # virtual environment. Only really used to create requirements.txt
+  src                          # all server source files
+  - dockerfile                 # dockerfile for flask container
+  - requirements.txt           # python requirements. Gets run in dockerfile
+  - database.db                # sqlite database
+  - blah.json                  # firebase admin sdk config file
+```
+
