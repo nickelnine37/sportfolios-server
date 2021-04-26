@@ -16,8 +16,6 @@ def get_prices(assets: list):
     return {tid: float(f'{20 * random.random():.2f}') for tid in assets}
 
 
-# def main():
-
 app = Flask(__name__)
 init_db()
 cred = credentials.Certificate(os.path.join(BASE_DIR, ADMIN_SDK_KEY))
@@ -87,8 +85,6 @@ def portfolio_history():
     else:
 
         return 'Portfolio History'
-
-    # return app
 
 
 if __name__ == '__main__':
