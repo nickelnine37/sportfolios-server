@@ -22,6 +22,7 @@ services:
 
 
   certbot:
+    container_name: certbot
     image: certbot/certbot
     restart: unless-stopped
     volumes:
@@ -47,10 +48,10 @@ services:
 
 
   redis:
+    container_name: redis
     image: redis:6.2.2
-    command: redis-server
+    command: redis-server /data/redis-server.conf
     volumes:
-      # - redis_data:/data
       - ./redis/data:/data
     networks:
       - internal-network
@@ -61,6 +62,3 @@ networks:
     external: true
   internal-network:
 
-
-# volumes:
-#  redis_data:

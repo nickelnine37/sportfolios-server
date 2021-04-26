@@ -34,10 +34,11 @@ def index():
 @app.route('/spot_prices', methods=['GET'])
 def spot_prices():
     """
-    Endpoint for querying the latest spot price for one or more market.
+    Endpoint for querying the latest back spot price for one or more markets.
     * Requires JWT 'Authorization' header.
     * Markets should be specified in 'markets' url argument, with market ids seperated by commas
     e.g. https://engine.sportfolios.co.uk/spot_prices?markets=T1:8:17420,T8:8:17420,T6:8:17420
+    returns JSON response: e.g. {'T1:8:17420': 4.52, 'T8:8:17420': 2.88, 'T6:8:17420': 8.93}
     """
 
     token = request.headers.get('Authorization')
