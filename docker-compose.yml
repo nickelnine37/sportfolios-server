@@ -50,7 +50,7 @@ services:
   redis:
     container_name: redis
     image: redis:6.2.2
-    command: redis-server /data/redis-server.conf
+    command: redis-server redis-server.conf
     volumes:
       - ./redis:/data
     networks:

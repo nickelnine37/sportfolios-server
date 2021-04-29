@@ -7,9 +7,10 @@ import redis
 import sys
 from src.authentication.authentication import verify_token
 from src.database.database import init_db, log_price_query
+from src.redis_utils.init_redis_db import init_redis_f
+import json
 
 ADMIN_SDK_KEY = 'sportfolios-431c6-firebase-adminsdk-bq76v-f490ad544c.json'
-FILE_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR='/var/www'
 
 def get_prices(assets: list):
@@ -41,14 +42,14 @@ def spot_prices():
 
     token = request.headers.get('Authorization')
     success, info = verify_token(token)
-    
-    print(info)
-    redis_db.set('most_recent_request', info['email'])
 
     if not success:
         error_message, code = info
         return error_message, code
     else:
+
+        print(info)
+        redis_db.set('most_recent_request', info['email'])
 
         markets = request.args.get('markets')
 
@@ -71,7 +72,7 @@ def historical_prices():
         return error_message, code
     else:
 
-        return redis_db.get('most_recent_request')
+        return str(redis_db.hgetall('T68:82:17361'))
 
 @app.route('/portfolio_history', methods=['GET'])
 def portfolio_history():
@@ -85,6 +86,11 @@ def portfolio_history():
     else:
 
         return 'Portfolio History'
+
+@app.route('/init_redis')
+def init_redis():
+    init_redis_f()
+    return 'Complete'
 
 
 if __name__ == '__main__':
