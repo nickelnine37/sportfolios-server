@@ -1,19 +1,12 @@
 import numpy as np
 
-from server.utils.io import read_last_line
-from server.utils.math_utils import log_sum_exp
+class LMSRMarketMaker:
 
-
-
-
-class MarketMaker:
-
-    def __init__(self, asset: str):
+    def __init__(self, asset: str, x0: np.ndarray, b: float):
 
         self.asset = asset
-        info = read_last_line('holdings/' + asset + '.csv').split(',')
-        self.b = float(info[-1])
-        self.x = np.array([float(n) for n in info[1:-1]])
+        self.x = x0
+        self.b = b
 
     def C(self, x: np.ndarray):
         """
@@ -33,29 +26,20 @@ class MarketMaker:
         Get the spot value for a quantity vector q
         """
         xmax = self.x.max()
-        return (q * np.exp(self.x - xmax)).sum() / np.exp(self.x - xmax).sum()
+        return (q * np.exp((self.x - xmax) / self.b)).sum() / np.exp((self.x - xmax) / self.b).sum()
 
     def execute_order(self, q: np.ndarray):
         """
         Execute an order for a quantity vector q
         """
-
         price = self.price_trade(q)
 
+    def back_spot_value(self):
+        return self.spot_value(q=np.exp(- np.linspace(0, 19, 20) / 6))
+
+    def __repr__(self):
+        return f'LMSRMarketMaker({self.asset})'
 
 
-
-
-
-
-
-
-
-
-
-
-if __name__ == '__main__':
-
-    MarketMaker(asset='P37:12:17426')
     
 

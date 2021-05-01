@@ -32,9 +32,7 @@ def init_db():
 
 
 def log_price_query(info: dict, markets: list):
-    
-    print(os.listdir())
-    print(os.getcwd())
+
     with sqlite3.connect(os.path.join(BASE_DIR, 'database.db')) as con:
         cur = con.cursor()
         cur.execute(

@@ -1,6 +1,7 @@
 from firebase_admin import auth
+import hashlib
 
-def verify_token(token: str):
+def verify_user_token(token: str):
     """
     Attempt to verify a firebase user id token. If successful, return
     True and the user info. If fails, return False along with an error
@@ -44,3 +45,18 @@ def verify_token(token: str):
 
         else:
             return False, ('Certificate Fetch Error', 400)
+
+
+def verify_admin(passhash: str):
+
+    if not isinstance(passhash, str):
+        return False, ('Failed', 401)
+
+    passhashtrue = b'^\x1aG\xbd:\x11\xefu^r\x15m&\r\x1bO\xec\xb1\xf2(\xf7\xc6\x83\x01\x11G$\xc6\x15{.\x18'
+    if hashlib.sha256(passhash.encode()).digest() == passhashtrue:
+        return True, None
+
+    else:
+        return False, ('Failed', 401)
+
+

@@ -7,3 +7,4 @@ flask/serverenv
 certbot/conf
 redis/logs.log
 redis/dump.rdb
+flask/logs
