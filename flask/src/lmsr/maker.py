@@ -2,10 +2,10 @@ import numpy as np
 
 class LMSRMarketMaker:
 
-    def __init__(self, asset: str, x0: np.ndarray, b: float):
+    def __init__(self, asset: str, x0: list, b: float):
 
         self.asset = asset
-        self.x = x0
+        self.x = np.array(x0)
         self.b = b
 
     def C(self, x: np.ndarray):
@@ -26,7 +26,7 @@ class LMSRMarketMaker:
         Get the spot value for a quantity vector q
         """
         xmax = self.x.max()
-        return (q * np.exp((self.x - xmax) / self.b)).sum() / np.exp((self.x - xmax) / self.b).sum()
+        return float((q * np.exp((self.x - xmax) / self.b)).sum() / np.exp((self.x - xmax) / self.b).sum())
 
     def execute_order(self, q: np.ndarray):
         """

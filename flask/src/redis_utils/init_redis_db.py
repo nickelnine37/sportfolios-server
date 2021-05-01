@@ -1,3 +1,5 @@
+import time
+
 import redis
 import os
 from src.redis_utils.arrays import toRedis, fromRedis
@@ -16,21 +18,29 @@ def init_redis_f():
     with redis_db.pipeline() as pipe:
 
         b0 = 4000
-        bh = toRedis(b0 * np.ones(60))
+        t = int(time.time())
+        hts = [t - 60 * 2 * i for i in range(60)]             # 2h
+        dts = [t - i * 60 * 24 for i in range(60)]            # 1 day
+        wts = [t - i * 60 * 24 * 7 for i in range(60)]        # 7 days
+        mts = [t - i * 60 * 24 * 7 * 4 for i in range(60)]    # 28 days
+        Mts = [t - i * 60 * 24 * 7 * 4 for i in range(60)]    # initially 28 days
 
         for market, x0 in x0s.items():
 
-            # print(market)
+            pipe.set(market, json.dumps({'x': x0, 'b': b0}))
 
-            x0 = np.array(x0, dtype=np.float32)
-            xh = np.repeat(np.array(x0, dtype=np.float32)[None, :], 60, axis=0)
-            x0 = toRedis(x0)
-            xh = toRedis(xh)
+            pipe.set(market + ':xhist', json.dumps({'xh': {t: x0 for t in hts},
+                                                      'xd': {t: x0 for t in dts},
+                                                      'xw': {t: x0 for t in wts},
+                                                      'xm': {t: x0 for t in mts},
+                                                      'xM': {t: x0 for t in Mts}}))
 
-            pipe.hmset(market, {'x': x0, 'b': 4000})
-            pipe.hmset(market + ':xhist', {'xH': xh, 'xD': xh, 'xW': xh, 'xM': xh, 'xm': xh})
-            pipe.hmset(market + ':bhist', {'bH': bh, 'bD': bh, 'bW': bh, 'bM': bh, 'bm': bh} )
+            pipe.set(market + ':bhist', json.dumps({'bh': {t: b0 for t in hts},
+                                                      'bd': {t: b0 for t in dts},
+                                                      'bw': {t: b0 for t in wts},
+                                                      'bm': {t: b0 for t in mts},
+                                                      'bM': {t: b0 for t in Mts}}))
 
-        print(pipe.execute())
-    # print(redis.bgsave())
+        pipe.execute()
+
 

@@ -1,0 +1,4 @@
+
+class ResourceNotFoundError(FileNotFoundError):
+    pass
+
