@@ -38,7 +38,7 @@ services:
       context: ./
       dockerfile: flask/dockerfile
     container_name: flask
-    command: gunicorn --bind 0.0.0.0:8000 --workers 4 --reload "src.main:app"
+    command: supervisord -c services.conf
     volumes:
       - ./flask:/var/www
     networks:

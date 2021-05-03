@@ -1,14 +1,7 @@
 import os
 from firebase_admin import auth
 import hashlib
-import firebase_admin
-from firebase_admin import credentials, firestore
 
-ADMIN_SDK_KEY = 'sportfolios-431c6-firebase-adminsdk-bq76v-f490ad544c.json'
-BASE_DIR='/var/www'
-cred = credentials.Certificate(os.path.join(BASE_DIR, ADMIN_SDK_KEY))
-default_app = firebase_admin.initialize_app(cred)
-db = firestore.client()
 
 def verify_user_token(token: str):
     """

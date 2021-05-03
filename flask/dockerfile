@@ -5,5 +5,7 @@ ENV CONTAINER_HOME=/var/www
 ADD ./flask $CONTAINER_HOME
 WORKDIR $CONTAINER_HOME
 
+RUN apt-get update && apt-get install -y supervisor
+
 RUN pip install -r $CONTAINER_HOME/requirements.txt
 

@@ -38,7 +38,11 @@ def attempt_purchase(uid: str, portfolioId: str, market: str, quantity: list, pr
             
     if success:
 
+        # TODO: write to database
+
         if round(price, 2) == round(price_true, 2):
+
+            # TODO: write to firebase
             return True, round(price_true, 2)
 
         else:
@@ -48,3 +52,36 @@ def attempt_purchase(uid: str, portfolioId: str, market: str, quantity: list, pr
         raise redis.WatchError
 
 
+def increment_quantity(uid: str, portfolioId: str, market: str, quantity: list):
+
+    logging.info('RUNNING SCHEDULED CANCEL')
+
+    if not redis_db.exists(market):
+        raise ResourceNotFoundError
+    
+    success = False
+    redis_db.watch(market)
+
+    for i in range(1, 101):
+
+        try:
+
+            current = json.loads(redis_db.get(market))
+            x0, b = current['x'], current['b']
+            current['x'] = (np.array(x0) + np.array(quantity)).tolist()
+            redis_db.set(market, json.dumps(current))
+            redis_db.unwatch()
+            success = True
+            break
+
+        except redis.WatchError:
+            logging.info('WATCH ERROR; increment; {uid}; {portfolioId}; {market}; {i}')
+
+    if success:
+        return
+
+    else:
+        raise redis.WatchError
+
+
+# def add_cancellation(cancelId: str, uid: str, portfolioId: str, )
