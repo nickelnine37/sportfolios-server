@@ -10,15 +10,6 @@ def init_db():
     conn = sqlite3.connect(os.path.join(BASE_DIR, 'database.db'))
     c = conn.cursor()
 
-    c.execute(''' SELECT count(name) FROM sqlite_master WHERE type='table' AND name='price_requests' ''')
-
-    if c.fetchone()[0]==1 :
-        pass
-    else:
-        print('price_requests table does not exist. Creating...')
-        conn.execute('CREATE TABLE price_requests (username TEXT, email TEXT, uid TEXT, auth_time INT, server_time INT, markets TEXT)')
-
-
     c.execute(''' SELECT count(name) FROM sqlite_master WHERE type='table' AND name='orders' ''')
 
     if c.fetchone()[0]==1 :

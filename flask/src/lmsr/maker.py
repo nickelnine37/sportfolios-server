@@ -19,12 +19,16 @@ class LMSRMarketMaker:
         """
         The price to make a trade q, taking the inventory vector from x to x + q
         """
+        if not isinstance(q, np.ndarray):
+            q = np.array(q)
         return self.C(self.x + q) - self.C(self.x)
 
     def spot_value(self, q: np.ndarray):
         """
         Get the spot value for a quantity vector q
         """
+        if not isinstance(q, np.ndarray):
+            q = np.array(q)
         xmax = self.x.max()
         return float((q * np.exp((self.x - xmax) / self.b)).sum() / np.exp((self.x - xmax) / self.b).sum())
 
@@ -32,6 +36,8 @@ class LMSRMarketMaker:
         """
         Execute an order for a quantity vector q
         """
+        if not isinstance(q, np.ndarray):
+            q = np.array(q)
         price = self.price_trade(q)
 
     def back_spot_value(self):

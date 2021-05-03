@@ -1,17 +1,20 @@
 import os
 import logging
+import json
 from flask import Flask, request, jsonify
+import redis
 
 from src.authentication.authentication import verify_user_token, verify_admin
 from src.database.database import init_db, log_price_query
 from src.redis_utils.init_redis_db import init_redis_f
 from src.redis_utils.update import  update_b_redis
 from src.redis_utils.get_data import  get_spot_prices, get_spot_quantities, get_historical_quantities
+from src.redis_utils.write_data import attempt_purchase
 from src.redis_utils.exceptions import ResourceNotFoundError
 
 BASE_DIR='/var/www'
 
-logging.basicConfig(format='%(asctime)s %(message)s',
+logging.basicConfig(format='%(asctime)s %(threadName)s %(levelname)s %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
                     filename=os.path.join(BASE_DIR, 'logs', 'logfile.log'),
                     level=logging.INFO)
@@ -127,6 +130,42 @@ def historical_quantities():
     except ResourceNotFoundError:
         logging.info(f'GET; historical_quantities; {info["user_id"]}; {remote_ip}; fail; Unknown market specified {market}')
         return jsonify({'bhist': None, 'xhist': None}), 200
+
+
+@app.route('/purchase', methods=['POST'])
+def purchase():
+
+    authorised, info = verify_user_token(request.headers.get('Authorization'))
+    remote_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
+
+    if not authorised:
+        message, code = info
+        logging.info(f'POST; purcharse; unknown; {remote_ip}; fail; {info}')
+        return message, code
+
+    uid = info['uid']
+    portfolioId = request.form.get('portfolioId')
+    market = request.form.get('market')
+    quantity = json.loads(request.form.get('quantity'))
+    price = float(request.form.get('price'))
+    
+    logging.info(f'{[type(j) for j in [market, portfolioId, quantity, price]]}')
+
+    if any([i is None for i in [market, portfolioId, quantity, price]]):
+        logging.info(f'POST; purcharse; unknown; {remote_ip}; fail; Malformed body')
+        return 'Malformed body', 400
+
+    try: 
+        success, sealed_price = attempt_purchase(uid, portfolioId, quantity, price)
+    except redis.WatchError:
+        logging.warning('WATCH ERROR; purchase; {uid}; {portfolioId}; {market}; failed')
+        return 'Too much trading activity', 408
+
+    if success:
+        return jsonify({'success': True, 'price': sealed_price}), 200
+    else:
+        return jsonify({'success': False, 'price': sealed_price}), 200
+
 
 
 @app.route('/portfolio_history', methods=['GET'])
