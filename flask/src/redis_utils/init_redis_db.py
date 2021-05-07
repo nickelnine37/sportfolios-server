@@ -17,7 +17,6 @@ def init_redis_f():
 
     with redis_db.pipeline() as pipe:
 
-        b0 = 4000
         t = int(time.time())
         hts = [t - 60 * 2 * i for i in range(60)]             # 2h
         dts = [t - i * 60 * 24 for i in range(60)]            # 1 day
@@ -25,21 +24,24 @@ def init_redis_f():
         mts = [t - i * 60 * 24 * 7 * 4 for i in range(60)]    # 28 days
         Mts = [t - i * 60 * 24 * 7 * 4 for i in range(60)]    # initially 28 days
 
-        for market, x0 in x0s.items():
+        for market, data in x0s.items():
+
+            x0 = data['x0']
+            b0 = data['b']
 
             pipe.set(market, json.dumps({'x': x0, 'b': b0}))
 
             pipe.set(market + ':xhist', json.dumps({'xh': {t: x0 for t in hts},
-                                                      'xd': {t: x0 for t in dts},
-                                                      'xw': {t: x0 for t in wts},
-                                                      'xm': {t: x0 for t in mts},
-                                                      'xM': {t: x0 for t in Mts}}))
+                                                    'xd': {t: x0 for t in dts},
+                                                    'xw': {t: x0 for t in wts},
+                                                    'xm': {t: x0 for t in mts},
+                                                    'xM': {t: x0 for t in Mts}}))
 
             pipe.set(market + ':bhist', json.dumps({'bh': {t: b0 for t in hts},
-                                                      'bd': {t: b0 for t in dts},
-                                                      'bw': {t: b0 for t in wts},
-                                                      'bm': {t: b0 for t in mts},
-                                                      'bM': {t: b0 for t in Mts}}))
+                                                    'bd': {t: b0 for t in dts},
+                                                    'bw': {t: b0 for t in wts},
+                                                    'bm': {t: b0 for t in mts},
+                                                    'bM': {t: b0 for t in Mts}}))
 
         pipe.execute()
 

@@ -1,32 +1,30 @@
 import sqlite3
 import time
 import os
+import logging
 
 BASE_DIR = '/var/www'
 
 
 def init_db():
 
-    conn = sqlite3.connect(os.path.join(BASE_DIR, 'database.db'))
-    c = conn.cursor()
-
-    c.execute(''' SELECT count(name) FROM sqlite_master WHERE type='table' AND name='orders' ''')
-
-    if c.fetchone()[0]==1 :
-        pass
-    else:
-        print('orders table does not exist. Creating...')
-        conn.execute('CREATE TABLE orders (username TEXT, email TEXT, uid TEXT, auth_time INT, server_time INT, asset TEXT, portfolioID TEXT, q0 DOUBLE, q1 DOUBLE, q2 DOUBLE, q3 DOUBLE, q4 DOUBLE, q5 DOUBLE, q6 DOUBLE, q7 DOUBLE, q8 DOUBLE, q9 DOUBLE, q10 DOUBLE, q11 DOUBLE, q12 DOUBLE, q13 DOUBLE, q14 DOUBLE, q15 DOUBLE, q16 DOUBLE, q17 DOUBLE, q18 DOUBLE, q19 DOUBLE)')
-
-
-    conn.close()
-
-
-def log_price_query(info: dict, markets: list):
 
     with sqlite3.connect(os.path.join(BASE_DIR, 'database.db')) as con:
         cur = con.cursor()
-        cur.execute(
-            f"INSERT INTO price_requests (username, email, uid, auth_time, server_time, markets) VALUES (?,?,?,?,?,?)",
-            (info['name'], info['email'], info['user_id'], info['auth_time'], int(time.time()), ','.join(markets)))
+
+        cur.execute(''' SELECT count(name) FROM sqlite_master WHERE type='table' AND name='orders' ''')
+
+        if cur.fetchone()[0]==1 :
+            pass
+        else:
+            logging.info('orders table does not exist. Creating...')
+            cur.execute('CREATE TABLE orders (username TEXT, email TEXT, uid TEXT, server_time INT,  portfolioId TEXT, market TEXT, quantity TEXT, price DOUBLE)')
+
+
+def log_order(userInfo: dict, portfolioId: str, market: str, quantity: list, price: float):
+
+    with sqlite3.connect(os.path.join(BASE_DIR, 'database.db')) as con:
+        cur = con.cursor()
+        cur.execute("INSERT INTO orders (username, email, uid, server_time, portfolioId, market, quantity, price) VALUES (?,?,?,?,?,?,?,?)",
+                   (userInfo['name'], userInfo['email'], userInfo['uid'], int(time.time()), portfolioId, market, str(quantity), price))
 

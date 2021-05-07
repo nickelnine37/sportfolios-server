@@ -3,7 +3,7 @@ import numpy as np
 import json
 import logging
 from src.lmsr.maker import LMSRMarketMaker
-from src.redis_utils.exceptions import ResourceNotFoundError
+from src.redis_utils.exceptions import ResourceNotFoundError, ResourceAlreadyExistsError
 
 redis_db = redis.Redis(host='redis', port=6379, db=0)
 
@@ -34,15 +34,11 @@ def attempt_purchase(uid: str, portfolioId: str, market: str, quantity: list, pr
             break
 
         except redis.WatchError:
-            logging.info('WATCH ERROR; purchase; {uid}; {portfolioId}; {market}; {i}')
+            logging.info('WATCH ERROR; attempt_purchase; {uid}; {portfolioId}; {market}; {i}')
             
     if success:
 
-        # TODO: write to database
-
         if round(price, 2) == round(price_true, 2):
-
-            # TODO: write to firebase
             return True, round(price_true, 2)
 
         else:
@@ -75,7 +71,7 @@ def increment_quantity(uid: str, portfolioId: str, market: str, quantity: list):
             break
 
         except redis.WatchError:
-            logging.info('WATCH ERROR; increment; {uid}; {portfolioId}; {market}; {i}')
+            logging.info('WATCH ERROR; increment;{uid};{portfolioId};{market};{i}')
 
     if success:
         return
@@ -84,4 +80,5 @@ def increment_quantity(uid: str, portfolioId: str, market: str, quantity: list):
         raise redis.WatchError
 
 
-# def add_cancellation(cancelId: str, uid: str, portfolioId: str, )
+
+

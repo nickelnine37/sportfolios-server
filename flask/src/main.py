@@ -5,14 +5,14 @@ from flask import Flask, request, jsonify
 import redis
 
 from src.firebase.authentication import verify_user_token, verify_admin
-from src.firebase.data import check_portfolio
-from src.database.database import init_db, log_price_query
+from src.firebase.data import check_portfolio, make_purchase
+from src.database.database import init_db, log_order
 from src.redis_utils.init_redis_db import init_redis_f
 from src.redis_utils.update import  update_b_redis
 from src.redis_utils.get_data import  get_spot_prices, get_spot_quantities, get_historical_quantities
 from src.redis_utils.write_data import attempt_purchase
 from src.redis_utils.exceptions import ResourceNotFoundError
-from src.redis_utils.queues import schedule_cancellation, cancel_scheduled_cancellation
+from src.redis_utils.queues import schedule_cancellation, cancel_scheduled_cancellation, execute_cancellation_early
 
 BASE_DIR='/var/www'
 
@@ -178,29 +178,50 @@ def purchase():
     quantity = json.loads(quantity)
     price = float(price)
 
-    # if not check_portfolio(portfolioId, uid):
-    #     logging.info(f'POST; purcharse; {uid}; {remote_ip}; fail; Invalid portfolio id: {portfolioId}')
-    #     return 'Invalid portfolio ID', 400
+    if not check_portfolio(portfolioId, uid):
+        logging.info(f'POST; purcharse; {uid}; {remote_ip}; fail; Invalid portfolio id: {portfolioId}')
+        return 'Invalid portfolio ID', 400
 
     try: 
         success, sealed_price = attempt_purchase(uid, portfolioId, market, quantity, price)
     except redis.WatchError:
-        logging.warning('WATCH ERROR; purchase; {uid}; {portfolioId}; {market}; failed')
+        logging.warning(f'WATCH ERROR; purchase; {uid}; {remote_ip}; {portfolioId}; {market}; failed')
         return 'Too much trading activity', 409
+    except ResourceNotFoundError:
+        logging.info(f'RESOURCE NOT FOUND; purcharse; {uid}; {remote_ip}; {portfolioId}; {market}; failed')
+        return f'Market {market} not found'
+
 
     if success:
-        logging.info(f'POST; purcharse; {uid}; {remote_ip}; success; {portfolioId}:{market}:{quantity}:{sealed_price}')
-        # TODO: write to firebase
+        logging.info(f'POST; purcharse; {uid}; {remote_ip}; success; {portfolioId}_{market}_{quantity}_{sealed_price}')
+        log_order(info, market, portfolioId, quantity, sealed_price)
+        make_purchase(uid, portfolioId, market, quantity, sealed_price)
+        log_order(info, portfolioId, market, quantity, price)
         return jsonify({'success': True, 'price': sealed_price, 'cancellationId': None}), 200
 
     else:
-        job = schedule_cancellation(uid, portfolioId, market, quantity)
-        logging.info(f'POST; purcharse; {uid}; {remote_ip}; to be confirmed; {job.id}:{portfolioId}:{market}:{quantity}:{sealed_price}')
-        return jsonify({'success': False, 'price': sealed_price, 'cancellationId': job.id}), 200
+        cancelId = schedule_cancellation(uid, portfolioId, market, quantity, sealed_price)
+        logging.info(f'POST; purcharse; {uid}; {remote_ip}; to be confirmed; {cancelId}_{portfolioId}_{market}_{quantity}_{sealed_price}')
+        return jsonify({'success': False, 'price': sealed_price, 'cancelId': cancelId}), 200
 
 
 @app.route('/confirm_order', methods=['POST'])
 def confirm_order():
+    """
+    Confirm or cancel order, given that the price was not what was requested. This is a follow-up 
+    request, which should 
+
+        * Requires JWT Authorization header
+        * Request body should contain the following keys:
+
+            cancelId: the ID of the cancellation
+            confirm: true (do not cancel order) or false (continue with order cancellation)
+            portfolioId: the portfolio id
+            market: the market
+            quantity: the quantity vector
+            price: the price to 2 dp
+
+    """
 
     authorised, info = verify_user_token(request.headers.get('Authorization'))
     remote_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
@@ -211,26 +232,47 @@ def confirm_order():
         return message, code
 
     uid = info['uid']
+    cancelId = request.form.get('cancelId')
     confirm = request.form.get('confirm')
-    job_id = request.form.get('cancellationId')
+    portfolioId = request.form.get('portfolioId')
+    market = request.form.get('market')
+    quantity = request.form.get('quantity')
+    price = request.form.get('price')
 
-    if confirm is None or job_id is None:
+    if any([i is None for i in [cancelId, confirm, portfolioId, market, quantity, price]]):
         logging.info(f'POST; confirm_order; {uid}; {remote_ip}; fail; Malformed body')
         return f'Malformed body', 400
 
     confirm = json.loads(confirm)
+    quantity = json.loads(quantity)
+    price = float(price)
+
+    if not check_portfolio(portfolioId, uid):
+        logging.info(f'POST; purcharse; {uid}; {remote_ip}; fail; Invalid portfolio id: {portfolioId}')
+        return 'Invalid portfolio ID', 400
 
     if confirm is True:
-        if cancel_scheduled_cancellation(job_id):
-            logging.info(f'POST; confirm_order; {uid}; {remote_ip}; confirmed; {job_id}')
-            # TODO: write to firebase
-            return 'Order confirmed', 200
-        else:
-            logging.info(f'POST; confirm_order; {uid}; {remote_ip}; failed; {job_id}:job deos not exist')
-            return 'Request not processed', 400
+        try:
+            cancel_scheduled_cancellation(cancelId, uid, portfolioId, market, quantity, price)
+            logging.info(f'POST; confirm_order; {uid}; {remote_ip}; confirmed; {cancelId}_{portfolioId}_{market}_{quantity}_{price}')
+            make_purchase(uid, portfolioId, market, quantity, price)
+            log_order(info, portfolioId, market, quantity, price)
+            return 'Order confirmed'
+
+        except (ValueError, ResourceNotFoundError) as E:
+            logging.info(f'POST; confirm_order; {uid}; {remote_ip}; error confirming; {cancelId}_{portfolioId}_{market}_{quantity}_{price}')
+            logging.info(f'{E}')
+            # return 'Could not confirm order', 400
+            raise E
     else:
-        logging.info(f'POST; confirm_order; {uid}; {remote_ip}; cancelled; {job_id}')
-        return 'Order cancelled', 200
+        try:
+            execute_cancellation_early(cancelId, uid, portfolioId, market, quantity, price)
+            logging.info(f'POST; confirm_order; {uid}; {remote_ip}; cancelled;  {cancelId}_{portfolioId}_{market}_{quantity}_{price}')
+            return 'Order cancelled', 200
+
+        except (ValueError, ResourceNotFoundError):
+            logging.info(f'POST; confirm_order; {uid}; {remote_ip}; error running cancelation early;  {cancelId}_{portfolioId}_{market}_{quantity}_{price}')
+            return 'Order cancelled', 200 
 
 
 
@@ -278,6 +320,4 @@ def update_b():
     return f'set {market} b to {b}'
 
 if __name__ == '__main__':
-#
-#     app = main()
     app.run()
