@@ -4,8 +4,12 @@ import json
 import logging
 from src.lmsr.maker import LMSRMarketMaker
 from src.redis_utils.exceptions import ResourceNotFoundError, ResourceAlreadyExistsError
+import math
 
 redis_db = redis.Redis(host='redis', port=6379, db=0)
+
+def validate_price(price: float):
+    return math.ceil(price * 100) / 100
 
 def attempt_purchase(uid: str, portfolioId: str, market: str, quantity: list, price: float) -> (bool, float):
 
@@ -38,11 +42,11 @@ def attempt_purchase(uid: str, portfolioId: str, market: str, quantity: list, pr
             
     if success:
 
-        if round(price, 2) == round(price_true, 2):
-            return True, round(price_true, 2)
+        if validate_price(price) == validate_price(price_true):
+            return True, validate_price(price_true)
 
         else:
-            return False, round(price_true, 2)
+            return False, validate_price(price_true)
 
     else:
         raise redis.WatchError

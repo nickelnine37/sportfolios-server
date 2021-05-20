@@ -5,14 +5,16 @@ from flask import Flask, request, jsonify
 import redis
 
 from src.firebase.authentication import verify_user_token, verify_admin
-from src.firebase.data import check_portfolio, make_purchase
+from src.firebase.data import check_portfolio, make_purchase, get_portfolio
 from src.database.database import init_db, log_order
 from src.redis_utils.init_redis_db import init_redis_f
 from src.redis_utils.update import  update_b_redis
-from src.redis_utils.get_data import  get_spot_prices, get_spot_quantities, get_historical_quantities
+from src.redis_utils.get_data import  get_spot_back_prices, get_latest_quantities, get_historical_quantities, get_spot_quantity_values
 from src.redis_utils.write_data import attempt_purchase
 from src.redis_utils.exceptions import ResourceNotFoundError
 from src.redis_utils.queues import schedule_cancellation, cancel_scheduled_cancellation, execute_cancellation_early
+from src.markets.portfolio import Portfolio
+from src.markets.markets import MarketCollection
 
 BASE_DIR='/var/www'
 
@@ -24,16 +26,16 @@ logging.basicConfig(format='%(asctime)s %(threadName)s %(levelname)s %(message)s
 app = Flask(__name__)
 init_db()
 
-@app.route('/spot_prices', methods=['GET'])
-def spot_prices():
+@app.route('/current_back_prices', methods=['GET'])
+def current_back_prices():
     """
     Endpoint for querying the latest back spot price for one or more markets.
         * Requires JWT Authorization header.
         * Markets should be specified in 'markets' url argument, with market ids seperated by commas
-        e.g. https://engine.sportfolios.co.uk/spot_prices?markets=T1:8:17420,T8:8:17420,T6:8:17420
+        e.g. https://engine.sportfolios.co.uk/current_back_prices?markets=T1:8:17420,T8:8:17420,T6:8:17420
 
     Returns:
-        JSON response: e.g. {'T1:8:17420': 4.52, 'T8:8:17420': 2.88, 'T6:8:17420': 8.93}
+        JSON response: e.g. {'1:8:17420T': 4.52, '8:8:17420T': 2.88, '6:8:17420T': 8.93}
     """
 
     authorised, info = verify_user_token(request.headers.get('Authorization'))
@@ -41,23 +43,24 @@ def spot_prices():
 
     if not authorised:
         message, code = info
-        logging.info(f'GET; spot_prices; unknown; {remote_ip}; fail; {info}')
+        logging.info(f'GET; current_back_prices; unknown; {remote_ip}; fail; {info}')
         return message, code
 
     markets = request.args.get('markets')
 
     if markets is None:
-        logging.info(f'GET; spot_prices; {info["user_id"]}; {remote_ip}; fail; No market specified')
+        logging.info(f'GET; current_back_prices; {info["user_id"]}; {remote_ip}; fail; No market specified')
         return jsonify({}), 200
 
-    result = jsonify(get_spot_prices(markets.split(',')))
-    logging.info(f'GET; spot_prices; {info["user_id"]}; {remote_ip}; success; {markets}')
+    result = jsonify(MarketCollection(markets.split(',')).current_back_prices())
+
+    logging.info(f'GET; current_back_prices; {info["user_id"]}; {remote_ip}; success; {markets}')
 
     return result, 200
 
 
-@app.route('/spot_quantities', methods=['GET'])
-def spot_quantities():
+@app.route('/current_holdings', methods=['GET'])
+def current_holdings():
     """
     Endpoint for querying the latest quantity vector and liquidity parameter
         * Requires JWT Authorization header.
@@ -73,27 +76,61 @@ def spot_quantities():
 
     if not authorised:
         message, code = info
-        logging.info(f'GET; spot_quantities; unknown; {remote_ip}; fail; {info}')
+        logging.info(f'GET; current_holdings; unknown; {remote_ip}; fail; {info}')
         return message, code
 
     market = request.args.get('market')
 
     if market is None:
-        logging.info(f'GET; spot_quantities; {info["user_id"]}; {remote_ip}; fail; No market specified')
-        return jsonify({'b': None, 'x': None}), 200
+        logging.info(f'GET; current_holdings; {info["user_id"]}; {remote_ip}; fail; No market specified')
+        return 'No market specified', 400
 
     try:
-        result = jsonify(get_spot_quantities(market)), 200
-        logging.info(f'GET; spot_quantities; {info["user_id"]}; {remote_ip}; success; {market}')
+        result = jsonify(get_latest_quantities(market)), 200
+        logging.info(f'GET; current_holdings; {info["user_id"]}; {remote_ip}; success; {market}')
         return result
 
     except ResourceNotFoundError:
-        logging.info(f'GET; spot_quantities; {info["user_id"]}; {remote_ip}; fail; Unknown market specified {market}')
+        logging.info(f'GET; current_holdings; {info["user_id"]}; {remote_ip}; fail; Unknown market specified {market}')
         return jsonify({'b': None, 'x': None}), 200
 
 
-@app.route('/historical_quantities', methods=['GET'])
-def historical_quantities():
+@app.route('/daily_back_prices', methods=['GET'])
+def daily_back_prices():
+    """
+    Endpoint for getting info about several markets.
+        * Requires JWT Authorization header.
+        * Markets should be specified in 'markets' url argument, with market ids seperated by commas
+        e.g. https://engine.sportfolios.co.uk/market_info?markets=T1:8:17420,T8:8:17420,T6:8:17420
+
+    Returns:
+        JSON response: e.g. {'1:8:17420T': 4.52, '8:8:17420T': 2.88, '6:8:17420T': 8.93}
+    """
+
+
+    authorised, info = verify_user_token(request.headers.get('Authorization'))
+    remote_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
+
+    if not authorised:
+        message, code = info
+        logging.info(f'GET; daily_back_prices; unknown; {remote_ip}; fail; {info}')
+        return message, code
+
+    markets = request.args.get('markets')
+
+    if markets is None:
+        logging.info(f'GET; daily_back_prices; {info["user_id"]}; {remote_ip}; fail; No market specified')
+        return jsonify({}), 200
+
+    result = jsonify(MarketCollection(markets.split(',')).daily_back_prices())
+
+    logging.info(f'GET; daily_back_prices; {info["user_id"]}; {remote_ip}; success; {markets}')
+
+    return result, 200
+
+
+@app.route('/historical_holdings', methods=['GET'])
+def historical_holdings():
     """
     Endpoint for querying the historical quantity vector and liquidity parameter
         * Requires JWT Authorization header.
@@ -101,11 +138,11 @@ def historical_quantities():
         e.g. https://engine.sportfolios.co.uk/historical_quantities?market=T1:8:17420
 
     Returns:
-        JSON response: e.g. {'b': {'bh': {t1: 4000, t2: 4000, ...],
-                                   'bd': {ta: 4000, tb: 4000, ...], ...},
-                             'x': {'xh': {[1, 2, 3, 4, ...],
+        JSON response: e.g. {'b': {'h': {t1: 4000, t2: 4000, ...],
+                                   'd': {ta: 4000, tb: 4000, ...], ...},
+                             'x': {'h': {[1, 2, 3, 4, ...],
                                           [2, 3, 4, 5, ...], ... },
-                                   'xd': [[4, 5, 6, 7, ...],
+                                   'd': [[4, 5, 6, 7, ...],
                                           [6, 7, 8, 9, ...], ...], ...}
                              }
     """
@@ -115,22 +152,22 @@ def historical_quantities():
 
     if not authorised:
         message, code = info
-        logging.info(f'GET; historical_quantities; unknown; {remote_ip}; fail; {info}')
+        logging.info(f'GET; historical_holdings; unknown; {remote_ip}; fail; {info}')
         return message, code
 
     market = request.args.get('market')
 
     if market is None:
-        logging.info(f'GET; historical_quantities; {info["user_id"]}; {remote_ip}; fail; No market specified')
+        logging.info(f'GET; historical_holdings; {info["user_id"]}; {remote_ip}; fail; No market specified')
         return jsonify({'bhist': None, 'xhist': None}), 200
 
     try:
         result = jsonify(get_historical_quantities(market)), 200
-        logging.info(f'GET; historical_quantities; {info["user_id"]}; {remote_ip}; success; {market}')
+        logging.info(f'GET; historical_holdings; {info["user_id"]}; {remote_ip}; success; {market}')
         return result
 
     except ResourceNotFoundError:
-        logging.info(f'GET; historical_quantities; {info["user_id"]}; {remote_ip}; fail; Unknown market specified {market}')
+        logging.info(f'GET; historical_holdings; {info["user_id"]}; {remote_ip}; fail; Unknown market specified {market}')
         return jsonify({'bhist': None, 'xhist': None}), 200
 
 
@@ -196,7 +233,7 @@ def purchase():
         logging.info(f'POST; purcharse; {uid}; {remote_ip}; success; {portfolioId}_{market}_{quantity}_{sealed_price}')
         log_order(info, market, portfolioId, quantity, sealed_price)
         make_purchase(uid, portfolioId, market, quantity, sealed_price)
-        log_order(info, portfolioId, market, quantity, price)
+        # log_order(info, portfolioId, market, quantity, price)
         return jsonify({'success': True, 'price': sealed_price, 'cancellationId': None}), 200
 
     else:
@@ -262,8 +299,8 @@ def confirm_order():
         except (ValueError, ResourceNotFoundError) as E:
             logging.info(f'POST; confirm_order; {uid}; {remote_ip}; error confirming; {cancelId}_{portfolioId}_{market}_{quantity}_{price}')
             logging.info(f'{E}')
-            # return 'Could not confirm order', 400
-            raise E
+            return 'Could not confirm order', 400
+            
     else:
         try:
             execute_cancellation_early(cancelId, uid, portfolioId, market, quantity, price)
@@ -275,18 +312,42 @@ def confirm_order():
             return 'Order cancelled', 200 
 
 
-
 @app.route('/portfolio_history', methods=['GET'])
 def portfolio_history():
 
-    success, info = verify_user_token(request.headers.get('Authorization'))
+    authorised, info = verify_user_token(request.headers.get('Authorization'))
     remote_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
 
-    if not success:
+    if not authorised:
         error_message, code = info
+        logging.info(f'GET; portfolio_history; unknown; {remote_ip}; fail; {info}')
         return error_message, code
-    else:
-        return 'Portfolio History'
+    
+    portfolioId = request.args.get('portfolioId')
+
+    if portfolioId is None:
+        logging.info(f'GET; portfolio_history; {info["user_id"]}; {remote_ip}; fail; No portfolio specified')
+        return 'No portfolio specified', 400
+
+    portfolioDoc = get_portfolio(portfolioId)
+
+    if portfolioDoc is None:
+        logging.info(f'GET; portfolio_history; {info["user_id"]}; {remote_ip}; fail; PortfolioId {portfolioId} not recognised')
+        return 'Portfolio Id not recognised', 400
+
+    if not portfolioDoc['public'] and portfolioDoc['public'] != info["user_id"]:
+        logging.info(f'GET; portfolio_history; {info["user_id"]}; {remote_ip}; fail; Private portfolio {portfolioId} not owned by user')
+        return 'Not authorised', 401
+
+    portfolio = Portfolio(portfolioId, portfolioDoc)
+
+    # markets, quantities = zip(*portfolioDoc['current'].items())
+    # values = get_spot_quantity_values(markets, quantities)
+
+    # historical_x = get_multiple_historical_quantities(markets)
+
+    return jsonify(portfolio.build_history()), 200
+
 
 @app.route('/init_redis', methods=['GET'])
 def init_redis():
@@ -300,6 +361,7 @@ def init_redis():
     init_redis_f()
 
     return 'Initialised Redis'
+
 
 @app.route('/update_b', methods=['POST'])
 def update_b():
@@ -318,6 +380,7 @@ def update_b():
             update_b_redis(market, b)
 
     return f'set {market} b to {b}'
+
 
 if __name__ == '__main__':
     app.run()

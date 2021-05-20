@@ -1,4 +1,6 @@
 import numpy as np
+import logging
+import json
 
 class LMSRMarketMaker:
 
@@ -40,11 +42,104 @@ class LMSRMarketMaker:
             q = np.array(q)
         price = self.price_trade(q)
 
-    def back_spot_value(self):
-        return self.spot_value(q=np.exp(- np.linspace(0, 19, 20) / 6))
-
     def __repr__(self):
         return f'LMSRMarketMaker({self.asset})'
+
+
+def orders_to_q(orders, hts, dts, wts, mts, Mts):
+
+    out = {}
+
+    q0 = orders[0][1]
+    try:
+        N = len(q0)
+    except TypeError:
+        N = 1
+
+    for xh, ts in zip(['h', 'd', 'w', 'm', 'M'], [hts, dts, wts, mts, Mts]):
+        
+        q_out = np.zeros((len(ts), N))
+        
+        for t, order in orders:
+            
+            if isinstance(order, list):
+                order = np.array(order)
+                
+            q_out[np.array(ts) >= t] += order
+
+        if N == 1:
+            out[xh] = dict(zip(ts, q_out.reshape(-1)))
+        else:
+            out[xh] = dict(zip(ts, q_out))
+                    
+    return out
+
+
+class MultiMarketMaker:
+
+    def __init__(self, market: str, xhist: dict, bhist: dict):
+
+        self.market = market
+        self.xhist = xhist
+        self.bhist = bhist  
+
+        self.ts = [int(i) for i in xhist.keys()]
+        self.xs = np.array(list(xhist.values()))
+        self.bs = np.array(list(bhist.values())).reshape(-1, 1)
+        self.xmax = self.xs.max(1).reshape(-1, 1)
+
+        self.T, self.N = self.xs.shape
+
+    def value(self, q: list):
+        
+        q = np.array(q).reshape(1, -1)
+        assert q.shape == (1, self.N)
+
+        return dict(zip(self.ts, (q * np.exp((self.xs - self.xmax) / self.bs)).sum(1) / np.exp((self.xs - self.xmax) / self.bs).sum(1)))
+
+
+
+class HistoricalLMSRMarketMaker:
+
+    def __init__(self, market: str, xhist: dict, bhist: dict):
+        
+        self.market = market
+        self.xhist = xhist
+        self.bhist = bhist
+
+        self.hts = [int(i) for i in xhist['h'].keys()]
+        self.dts = [int(i) for i in xhist['d'].keys()]
+        self.wts = [int(i) for i in xhist['w'].keys()]
+        self.mts = [int(i) for i in xhist['m'].keys()]
+        self.Mts = [int(i) for i in xhist['M'].keys()]
+        
+    def spot_value(self, orders: list):
+        """
+        Get the spot value for a quantity vector q
+        """
+
+        qhist = orders_to_q(orders, self.hts, self.dts, self.wts, self.mts, self.Mts)
+        
+
+        if self.market == 'cash':
+            return qhist
+
+        out = {}
+
+        for th in self.xhist.keys():
+            
+            ts = [int(i) for i in self.xhist[th].keys()]
+            xs = np.array(list(self.xhist[th].values()))
+            bs = np.array(list(self.bhist[th].values())).reshape(-1, 1)
+            qs = np.array(list(qhist[th].values()))
+            
+            xmax = xs.max(1).reshape(-1, 1)
+            
+            out[th] = dict(zip(ts, (qs * np.exp((xs - xmax) / bs)).sum(1) / np.exp((xs - xmax) / bs).sum(1)))
+
+        return out
+
+    
 
 
     

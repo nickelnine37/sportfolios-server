@@ -8,7 +8,10 @@ portfolios = db.collection(u'portfolios')
 
 
 def get_portfolio(portfolioId: str) -> dict:
-    return portfolios.document(portfolioId).get().to_dict()
+    doc = portfolios.document(portfolioId).get()
+    if doc is None:
+        return None
+    return doc.to_dict()
 
 
 def check_portfolio(portfolioId: str, uid: str) -> bool:
