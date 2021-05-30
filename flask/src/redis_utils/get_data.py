@@ -71,6 +71,20 @@ def get_latest_quantities(market: str) -> dict:
     return json.loads(result)
 
 
+
+def get_multiple_latest_quantities(markets: list):
+
+    with redis_db.pipeline() as pipe:
+
+        for market in markets:
+
+            pipe.get(market)
+
+        results = pipe.execute()
+
+    return {market: json.loads(result) for market, result in zip(markets, results)}
+
+
 def get_multiple_historical_quantities(markets: list):
 
     with redis_db.pipeline() as pipe:

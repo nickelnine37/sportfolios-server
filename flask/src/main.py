@@ -9,7 +9,7 @@ from src.firebase.data import check_portfolio, make_purchase, get_portfolio
 from src.database.database import init_db, log_order
 from src.redis_utils.init_redis_db import init_redis_f
 from src.redis_utils.update import  update_b_redis
-from src.redis_utils.get_data import  get_spot_back_prices, get_latest_quantities, get_historical_quantities, get_spot_quantity_values
+from src.redis_utils.get_data import  get_spot_back_prices, get_latest_quantities, get_historical_quantities, get_spot_quantity_values, get_multiple_historical_quantities, get_multiple_latest_quantities
 from src.redis_utils.write_data import attempt_purchase
 from src.redis_utils.exceptions import ResourceNotFoundError
 from src.redis_utils.queues import schedule_cancellation, cancel_scheduled_cancellation, execute_cancellation_early
@@ -64,9 +64,11 @@ def current_holdings():
     """
     Endpoint for querying the latest quantity vector and liquidity parameter
         * Requires JWT Authorization header.
-        * Market should be specified in 'market' url argument, with a single market id
-        e.g. https://engine.sportfolios.co.uk/spot_quantities?market=T1:8:17420
-
+        * Market should be specified in EITHER 'market' url argument, with a single market id
+          e.g. https://engine.sportfolios.co.uk/spot_quantities?market=T1:8:17420
+          OR a 'markets' url parameter, with multiple markets specified
+          e.g.  https://engine.sportfolios.co.uk/spot_quantities?markets=T1:8:17420,T8:8:17420,T6:8:17420
+        
     Returns:
         JSON response: e.g. {'b': 4000, 'x': [1, 2, 3, 4, 5, 6, ... , 20]}
     """
@@ -80,19 +82,40 @@ def current_holdings():
         return message, code
 
     market = request.args.get('market')
+    markets = request.args.get('markets')
 
-    if market is None:
+    if market is None and markets is None:
         logging.info(f'GET; current_holdings; {info["user_id"]}; {remote_ip}; fail; No market specified')
         return 'No market specified', 400
 
-    try:
-        result = jsonify(get_latest_quantities(market)), 200
-        logging.info(f'GET; current_holdings; {info["user_id"]}; {remote_ip}; success; {market}')
-        return result
+    elif market is None:
 
-    except ResourceNotFoundError:
-        logging.info(f'GET; current_holdings; {info["user_id"]}; {remote_ip}; fail; Unknown market specified {market}')
-        return jsonify({'b': None, 'x': None}), 200
+        result = get_multiple_latest_quantities(markets.split(','))
+        # for market in markets.split(','):
+
+            # try:
+                # result[market] = get_latest_quantities(market)
+
+            # except ResourceNotFoundError:
+            #     logging.info(f'GET; current_holdings; {info["user_id"]}; {remote_ip}; fail; Unknown market specified {market}')
+            #     result[market] = {'b': None, 'x': None}
+
+        logging.info(f'GET; current_holdings; {info["user_id"]}; {remote_ip}; success; {markets}')
+        return jsonify(result), 200
+
+    elif markets is None:
+
+        try:
+            result = get_latest_quantities(market)
+            logging.info(f'GET; current_holdings; {info["user_id"]}; {remote_ip}; success; {market}')
+            return jsonify(result), 200
+
+        except ResourceNotFoundError:
+            logging.info(f'GET; current_holdings; {info["user_id"]}; {remote_ip}; fail; Unknown market specified {market}')
+            return jsonify({'b': None, 'x': None}), 200
+
+    else:
+        return 'market and markets specified', 400
 
 
 @app.route('/daily_back_prices', methods=['GET'])
@@ -156,19 +179,40 @@ def historical_holdings():
         return message, code
 
     market = request.args.get('market')
+    markets = request.args.get('markets')
 
-    if market is None:
+    if market is None and markets is None:
         logging.info(f'GET; historical_holdings; {info["user_id"]}; {remote_ip}; fail; No market specified')
         return jsonify({'bhist': None, 'xhist': None}), 200
 
-    try:
-        result = jsonify(get_historical_quantities(market)), 200
-        logging.info(f'GET; historical_holdings; {info["user_id"]}; {remote_ip}; success; {market}')
-        return result
+    elif market is None:
 
-    except ResourceNotFoundError:
-        logging.info(f'GET; historical_holdings; {info["user_id"]}; {remote_ip}; fail; Unknown market specified {market}')
-        return jsonify({'bhist': None, 'xhist': None}), 200
+        result = get_multiple_historical_quantities(markets.split(','))
+        # for market in markets.split(','):
+
+            # try:
+                # result[market] = get_historical_quantities(market)
+
+            # except ResourceNotFoundError:
+            #     logging.info(f'GET; historical_holdings; {info["user_id"]}; {remote_ip}; fail; Unknown market specified {market}')
+            #     result[market] = {'bhist': None, 'xhist': None}
+
+        logging.info(f'GET; historical_holdings; {info["user_id"]}; {remote_ip}; success; {markets}')
+        return jsonify(result), 200
+
+    elif markets is None:
+
+        try:
+            result = get_historical_quantities(market)
+            logging.info(f'GET; historical_holdings; {info["user_id"]}; {remote_ip}; success; {market}')
+            return jsonify(result), 200
+
+        except ResourceNotFoundError:
+            logging.info(f'GET; historical_holdings; {info["user_id"]}; {remote_ip}; fail; Unknown market specified {market}')
+            return jsonify({'bhist': None, 'xhist': None}), 200
+
+    else:
+        return 'market and markets specified', 400
 
 
 @app.route('/purchase', methods=['POST'])
