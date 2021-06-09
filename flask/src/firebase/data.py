@@ -32,15 +32,19 @@ def make_purchase(uid: str, portfolioId: str, market: str, quantity: list, price
     current = current.to_dict()
 
     if market in current['current']:
-        doc.update({f'current.{market}': (np.array(current['current'][market]) + np.array(quantity)).tolist()})
+        newQ = np.array(current['current'][market]) + np.array(quantity)
+        if np.isclose(newQ, 0, atol=1e-3).all():
+            doc.update({f'current.{market}': firestore.DELETE_FIELD})
+        else:
+            doc.update({f'current.{market}': (np.array(current['current'][market]) + np.array(quantity)).tolist()})
 
     else:
         doc.update({f'current.{market}': quantity})
 
-    doc.update({f'current.cash': firestore.Increment(-price)})
+    doc.update({f'current.cash': [current['current']['cash'][0] - price]})
 
     t = int(time.time()) 
 
-    doc.update({'history': firestore.ArrayUnion([{'market': 'cash', 'quantity': -price,   'time': t}, 
+    doc.update({'history': firestore.ArrayUnion([{'market': 'cash', 'quantity': [-price],   'time': t}, 
                                                  {'market': market, 'quantity': quantity, 'time': t}])})
 

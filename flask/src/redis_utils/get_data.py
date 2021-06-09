@@ -31,10 +31,7 @@ def get_spot_back_prices(markets: list) -> dict:
             out[market] = 10 * LMSRMarketMaker(market, x, b).back_spot_value()
 
     return out
-
-
-
-
+    
 
 def get_spot_quantity_values(markets: list, quantities: list):
 

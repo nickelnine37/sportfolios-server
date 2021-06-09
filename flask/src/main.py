@@ -91,15 +91,6 @@ def current_holdings():
     elif market is None:
 
         result = get_multiple_latest_quantities(markets.split(','))
-        # for market in markets.split(','):
-
-            # try:
-                # result[market] = get_latest_quantities(market)
-
-            # except ResourceNotFoundError:
-            #     logging.info(f'GET; current_holdings; {info["user_id"]}; {remote_ip}; fail; Unknown market specified {market}')
-            #     result[market] = {'b': None, 'x': None}
-
         logging.info(f'GET; current_holdings; {info["user_id"]}; {remote_ip}; success; {markets}')
         return jsonify(result), 200
 
@@ -271,7 +262,7 @@ def purchase():
     except ResourceNotFoundError:
         logging.info(f'RESOURCE NOT FOUND; purcharse; {uid}; {remote_ip}; {portfolioId}; {market}; failed')
         return f'Market {market} not found'
-
+ 
 
     if success:
         logging.info(f'POST; purcharse; {uid}; {remote_ip}; success; {portfolioId}_{market}_{quantity}_{sealed_price}')
@@ -356,41 +347,41 @@ def confirm_order():
             return 'Order cancelled', 200 
 
 
-@app.route('/portfolio_history', methods=['GET'])
-def portfolio_history():
+# @app.route('/portfolio_history', methods=['GET'])
+# def portfolio_history():
 
-    authorised, info = verify_user_token(request.headers.get('Authorization'))
-    remote_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
+#     authorised, info = verify_user_token(request.headers.get('Authorization'))
+#     remote_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
 
-    if not authorised:
-        error_message, code = info
-        logging.info(f'GET; portfolio_history; unknown; {remote_ip}; fail; {info}')
-        return error_message, code
+#     if not authorised:
+#         error_message, code = info
+#         logging.info(f'GET; portfolio_history; unknown; {remote_ip}; fail; {info}')
+#         return error_message, code
     
-    portfolioId = request.args.get('portfolioId')
+#     portfolioId = request.args.get('portfolioId')
 
-    if portfolioId is None:
-        logging.info(f'GET; portfolio_history; {info["user_id"]}; {remote_ip}; fail; No portfolio specified')
-        return 'No portfolio specified', 400
+#     if portfolioId is None:
+#         logging.info(f'GET; portfolio_history; {info["user_id"]}; {remote_ip}; fail; No portfolio specified')
+#         return 'No portfolio specified', 400
 
-    portfolioDoc = get_portfolio(portfolioId)
+#     portfolioDoc = get_portfolio(portfolioId)
 
-    if portfolioDoc is None:
-        logging.info(f'GET; portfolio_history; {info["user_id"]}; {remote_ip}; fail; PortfolioId {portfolioId} not recognised')
-        return 'Portfolio Id not recognised', 400
+#     if portfolioDoc is None:
+#         logging.info(f'GET; portfolio_history; {info["user_id"]}; {remote_ip}; fail; PortfolioId {portfolioId} not recognised')
+#         return 'Portfolio Id not recognised', 400
 
-    if not portfolioDoc['public'] and portfolioDoc['public'] != info["user_id"]:
-        logging.info(f'GET; portfolio_history; {info["user_id"]}; {remote_ip}; fail; Private portfolio {portfolioId} not owned by user')
-        return 'Not authorised', 401
+#     if not portfolioDoc['public'] and portfolioDoc['public'] != info["user_id"]:
+#         logging.info(f'GET; portfolio_history; {info["user_id"]}; {remote_ip}; fail; Private portfolio {portfolioId} not owned by user')
+#         return 'Not authorised', 401
 
-    portfolio = Portfolio(portfolioId, portfolioDoc)
+#     portfolio = Portfolio(portfolioId, portfolioDoc)
 
-    # markets, quantities = zip(*portfolioDoc['current'].items())
-    # values = get_spot_quantity_values(markets, quantities)
+#     # markets, quantities = zip(*portfolioDoc['current'].items())
+#     # values = get_spot_quantity_values(markets, quantities)
 
-    # historical_x = get_multiple_historical_quantities(markets)
+#     # historical_x = get_multiple_historical_quantities(markets)
 
-    return jsonify(portfolio.build_history()), 200
+#     return jsonify(portfolio.build_history()), 200
 
 
 @app.route('/init_redis', methods=['GET'])
