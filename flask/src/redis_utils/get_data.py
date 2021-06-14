@@ -33,34 +33,44 @@ def get_spot_back_prices(markets: list) -> dict:
     return out
     
 
-def get_spot_quantity_values(markets: list, quantities: list):
+# def get_spot_quantity_values(markets: list, quantities: list):
 
-    with redis_db.pipeline() as pipe:
+#     with redis_db.pipeline() as pipe:
 
-        for market in markets:
-            pipe.get(market)
+#         for market in markets:
+#             pipe.get(market)
 
-        results = pipe.execute()
+#         results = pipe.execute()
 
-    out = {}
+#     out = {}
 
-    for market, x0, q in zip(markets, results, quantities):
+#     for market, x0, q in zip(markets, results, quantities):
 
-        if market == 'cash':
-            out['cash'] = q 
-        elif x0 is None:
-            out[market] = None
-        else:
-            xs = json.loads(x0)
-            x, b = xs['x'], xs['b']
-            out[market] = LMSRMarketMaker(market, x, b).spot_value(q)
+#         if market == 'cash':
+#             out['cash'] = q 
+#         elif x0 is None:
+#             out[market] = None
+#         else:
+#             xs = json.loads(x0)
+#             x, b = xs['x'], xs['b']
+#             out[market] = LMSRMarketMaker(market, x, b).spot_value(q)
 
-    return out
+#     return out
 
 
 def get_latest_quantities(market: str) -> dict:
 
     result = redis_db.get(market)
+
+    if result is None:
+        raise ResourceNotFoundError
+
+    return json.loads(result)
+
+
+def _get_latest_quantities(market: str) -> dict:
+
+    result = redis_db.get(market + '_new')
 
     if result is None:
         raise ResourceNotFoundError
@@ -76,6 +86,19 @@ def get_multiple_latest_quantities(markets: list):
         for market in markets:
 
             pipe.get(market)
+
+        results = pipe.execute()
+
+    return {market: json.loads(result) for market, result in zip(markets, results)}
+
+
+def _get_multiple_latest_quantities(markets: list):
+
+    with redis_db.pipeline() as pipe:
+
+        for market in markets:
+
+            pipe.get(market + '_new')
 
         results = pipe.execute()
 
@@ -100,6 +123,20 @@ def get_multiple_historical_quantities(markets: list):
     
     return out
 
+def _get_multiple_historical_quantities(markets: list):
+
+    with redis_db.pipeline() as pipe:
+
+        for market in markets:
+
+            pipe.get(market + ':hist_new')
+
+        pipe.get('time')
+        
+        results = pipe.execute()
+
+    return {'data': {market: json.loads(result) for market, result in zip(markets, results[:-1])}, 'time': json.loads(results[-1])}
+
 
 def get_historical_quantities(market: str) -> dict:
 
@@ -113,5 +150,21 @@ def get_historical_quantities(market: str) -> dict:
         raise ResourceNotFoundError
 
     return {'xhist': json.loads(xhist), 'bhist': json.loads(bhist)}
+
+
+
+def _get_historical_quantities(market: str) -> dict:
+
+    with redis_db.pipeline() as pipe:
+
+        pipe.get(market + ':hist_new')
+        pipe.get('time')
+        
+        result, time = pipe.execute()
+
+    if result is None:
+        raise ResourceNotFoundError
+
+    return {'data': json.loads(result), 'time': json.loads(time)}
 
 

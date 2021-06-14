@@ -98,6 +98,24 @@ class MultiMarketMaker:
         return dict(zip(self.ts, (q * np.exp((self.xs - self.xmax) / self.bs)).sum(1) / np.exp((self.xs - self.xmax) / self.bs).sum(1)))
 
 
+class _MultiMarketMaker:
+
+    def __init__(self, market: str, xhist: list, bhist: list):
+
+        self.market = market
+        self.xs = np.array(xhist)
+        self.bs = np.array(bhist).reshape(-1, 1)
+        self.xmax = self.xs.max(1).reshape(-1, 1)
+        self.T, self.N = self.xs.shape
+
+    def value(self, q: list):
+        
+        q = np.array(q).reshape(1, -1)
+        assert q.shape == (1, self.N)
+
+        return ((q * np.exp((self.xs - self.xmax) / self.bs)).sum(1) / np.exp((self.xs - self.xmax) / self.bs).sum(1)).reshape(-1).tolist()
+
+
 
 class HistoricalLMSRMarketMaker:
 
