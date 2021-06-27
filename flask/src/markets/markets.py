@@ -208,14 +208,18 @@ class _MarketCollection:
         with redis_db.pipeline() as pipe:
 
             for market in self.markets:
-                pipe.get(market.name + '_new')
+                pipe.get(market.name)
 
             results = pipe.execute()
 
         for current_xb, market in zip(results, self.markets):
 
-            market.set_xb(**json.loads(current_xb))
-            prices[market.name] = market.current_back_price()
+            if current_xb is None:
+                prices[market.name] = None
+                logging.info(f'_MarketCollection.current_back_prices failed for {market.name}')
+            else:
+                market.set_xb(**json.loads(current_xb))
+                prices[market.name] = market.current_back_price()
 
         return prices
 
@@ -226,18 +230,22 @@ class _MarketCollection:
         with redis_db.pipeline() as pipe:
 
             for market in self.markets:
-                pipe.get(market.name + ':hist_new')
+                pipe.get(market.name + ':hist')
                 
             results = pipe.execute()
 
         for hist, market in zip(results, self.markets):
-            
-            hist = json.loads(hist)
-            xhist = hist['x']['d']
-            bhist = hist['b']['d']
 
-            market.set_daily_xb(xhist, bhist)
-            prices[market.name] = market.daily_back_price()
+            if hist is None:
+                prices[market.name] = None
+                logging.info(f'_MarketCollection.daily_back_prices failed for {market.name}')
+            else:
+                hist = json.loads(hist)
+                xhist = hist['x']['d']
+                bhist = hist['b']['d']
+
+                market.set_daily_xb(xhist, bhist)
+                prices[market.name] = market.daily_back_price()
 
         return prices
 

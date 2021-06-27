@@ -9,7 +9,7 @@ import logging
 
 def init_redis_f():
 
-    ## IS EVERYTHING 100% DOUBLES?????????
+    ## IS EVERYTHING 100% DOUBLES????????? (except time.....!!!!!!)
 
     redis_db = redis.Redis(host='redis', port=6379, db=0)
 

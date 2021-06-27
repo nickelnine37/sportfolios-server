@@ -70,7 +70,7 @@ def get_latest_quantities(market: str) -> dict:
 
 def _get_latest_quantities(market: str) -> dict:
 
-    result = redis_db.get(market + '_new')
+    result = redis_db.get(market)
 
     if result is None:
         raise ResourceNotFoundError
@@ -98,7 +98,7 @@ def _get_multiple_latest_quantities(markets: list):
 
         for market in markets:
 
-            pipe.get(market + '_new')
+            pipe.get(market)
 
         results = pipe.execute()
 
@@ -129,7 +129,7 @@ def _get_multiple_historical_quantities(markets: list):
 
         for market in markets:
 
-            pipe.get(market + ':hist_new')
+            pipe.get(market + ':hist')
 
         pipe.get('time')
         
@@ -157,7 +157,7 @@ def _get_historical_quantities(market: str) -> dict:
 
     with redis_db.pipeline() as pipe:
 
-        pipe.get(market + ':hist_new')
+        pipe.get(market + ':hist')
         pipe.get('time')
         
         result, time = pipe.execute()
