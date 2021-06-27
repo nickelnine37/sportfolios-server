@@ -9,3 +9,4 @@ redis/logs.log
 redis/dump.rdb
 flask/logs
 nginx/logs
+.Trash-1000
