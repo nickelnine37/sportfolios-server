@@ -15,37 +15,37 @@ def init_redis_f():
 
     BASE_DIR = '/var/www'
 
-    # with open(os.path.join(BASE_DIR, 'data', 'player_hist.json'), 'r')  as f:
-    #     players = json.loads(f.read())
+    with open(os.path.join(BASE_DIR, 'data', 'player_hist.json'), 'r')  as f:
+        players = json.loads(f.read())
 
-    with open(os.path.join(BASE_DIR, 'data', 'teams_hist.json'), 'r')  as f:
+    with open(os.path.join(BASE_DIR, 'data', 'team_hist.json'), 'r')  as f:
         teams = json.loads(f.read())
 
-    # with open(os.path.join(BASE_DIR, 'data', 'times.json'), 'r')  as f:
-    #     times = json.loads(f.read())
+    with open(os.path.join(BASE_DIR, 'data', 'time.json'), 'r')  as f:
+        times = json.loads(f.read())
     
     with redis_db.pipeline() as pipe:
 
-        # for player in players.keys():
+        for player_id, player_hist in players.items():
 
-        #     x_current = players[player]['x']['h'][-1]
-        #     b_current = players[player]['b']['h'][-1]
+            x_current = player_hist['x']['h'][-1]
+            b_current = player_hist['b']['h'][-1]
 
-        #     pipe.set(player + '_new', json.dumps({'x': x_current, 'b': b_current}))
-        #     pipe.set(player + ':hist_new', json.dumps(players[player]))
+            pipe.set(player_id, json.dumps({'x': x_current, 'b': b_current}))
+            pipe.set(player_id + ':hist', json.dumps(player_hist))
 
-        for team in teams.keys():
+        for team_id, team_hist in teams.items():
 
-            x_current = teams[team]['x']['h'][-1]
-            b_current = teams[team]['b']['h'][-1]
+            x_current = team_hist['x']['h'][-1]
+            b_current = team_hist['b']['h'][-1]
 
-            pipe.set(team + '_new', json.dumps({'x': x_current, 'b': b_current}))
-            pipe.set(team + ':hist_new', json.dumps(teams[team]))
+            pipe.set(team_id, json.dumps({'x': x_current, 'b': b_current}))
+            pipe.set(team_id + ':hist', json.dumps(team_hist))
 
-        # pipe.set('time', json.dumps(times))
+        pipe.set('time', json.dumps(times))
 
-        # del players
-        # del teams
+        del players
+        del teams
 
         pipe.execute()
 

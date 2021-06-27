@@ -15,6 +15,7 @@ from src.redis_utils.exceptions import ResourceNotFoundError
 from src.redis_utils.queues import schedule_cancellation, cancel_scheduled_cancellation, execute_cancellation_early
 # from src.markets.portfolio import Portfolio
 from src.markets.markets import MarketCollection, _MarketCollection
+import time
 
 BASE_DIR='/var/www'
 
@@ -587,5 +588,18 @@ def update_b():
     return f'set {market} b to {b}'
 
 
+def test_func():
+
+    logging.info(f'The test function was run at {time.time()}')
+
+
+
+
+
 if __name__ == '__main__':
+
+
+
     app.run()
+
+
