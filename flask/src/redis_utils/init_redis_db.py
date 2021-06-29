@@ -1,5 +1,3 @@
-import time
-
 import redis
 import os
 from src.redis_utils.arrays import toRedis, fromRedis
