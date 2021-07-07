@@ -108,7 +108,7 @@ class _MultiMarketMaker:
         self.xmax = self.xs.max(1).reshape(-1, 1)
         self.T, self.N = self.xs.shape
 
-    def value(self, q: list):
+    def value(self, q: list) -> list:
         
         q = np.array(q).reshape(1, -1)
         assert q.shape == (1, self.N)

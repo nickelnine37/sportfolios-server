@@ -37,7 +37,7 @@ services:
   flask:
     build:
       context: ./
-      dockerfile: flask/dockerfile
+      dockerfile: flask/dockerfile 
     container_name: flask
     command: supervisord -c services.conf
     volumes:

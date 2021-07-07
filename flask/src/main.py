@@ -6,7 +6,6 @@ import redis
 
 from src.firebase.authentication import verify_user_token, verify_admin
 from src.firebase.data import check_portfolio, make_purchase, get_portfolio
-from src.database.database import init_db, log_order
 from src.redis_utils.init_redis_db import init_redis_f
 from src.redis_utils.update import  update_b_redis
 import src.redis_utils.get_data as get_data
@@ -25,7 +24,6 @@ logging.basicConfig(format='%(asctime)s %(threadName)s %(levelname)s %(message)s
                     level=logging.INFO)
 
 app = Flask(__name__)
-init_db()
 
 @app.route('/current_back_prices', methods=['GET'])
 def current_back_prices():
@@ -437,9 +435,7 @@ def purchase():
 
     if success:
         logging.info(f'POST; purcharse; {uid}; {remote_ip}; success; {portfolioId}_{market}_{quantity}_{sealed_price}')
-        log_order(info, market, portfolioId, quantity, sealed_price)
         make_purchase(uid, portfolioId, market, quantity, sealed_price)
-        # log_order(info, portfolioId, market, quantity, price)
         return jsonify({'success': True, 'price': sealed_price, 'cancellationId': None}), 200
 
     else:
@@ -499,7 +495,6 @@ def confirm_order():
             cancel_scheduled_cancellation(cancelId, uid, portfolioId, market, quantity, price)
             logging.info(f'POST; confirm_order; {uid}; {remote_ip}; confirmed; {cancelId}_{portfolioId}_{market}_{quantity}_{price}')
             make_purchase(uid, portfolioId, market, quantity, price)
-            log_order(info, portfolioId, market, quantity, price)
             return 'Order confirmed'
 
         except (ValueError, ResourceNotFoundError) as E:

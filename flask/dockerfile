@@ -9,3 +9,4 @@ RUN apt-get update && apt-get install -y supervisor
 
 RUN pip install -r $CONTAINER_HOME/requirements.txt
 
+ENV PATH $CONTAINER_HOME/src:$PATH
