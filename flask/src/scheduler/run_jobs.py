@@ -1,5 +1,6 @@
 import sys
 
+
 sys.path.append('/var/www/src')
 
 import os
@@ -9,6 +10,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 from redis_holdings import RedisJobs
 from firebase_markets import FirebaseMarketJobs
+from firebase_portfolios import FirebasePortfoliosJobs
 
 
 if __name__ == '__main__':
@@ -23,13 +25,15 @@ if __name__ == '__main__':
     logging.info(str(sys.path))
 
     scheduler = BlockingScheduler()
+
     redis_jobs = RedisJobs()
     firebase_market_jobs = FirebaseMarketJobs()
+    firebase_portfolio_jobs = FirebasePortfoliosJobs()
 
     now = datetime.now()
-
     scheduler.add_job(redis_jobs.update_all_historical_holdings, trigger='interval', minutes=2, start_date=now, next_run_time=now)
     scheduler.add_job(firebase_market_jobs.update_all_markets, trigger='interval', minutes=60, start_date=now, next_run_time=now)
+    scheduler.add_job(firebase_portfolio_jobs.update_all_portfolios, trigger='interval', minutes=60, start_date=now, next_run_time=now)
 
     scheduler.start()
 

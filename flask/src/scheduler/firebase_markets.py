@@ -1,30 +1,22 @@
 
-from itertools import groupby
 import logging
-
-from firebase_admin import credentials, firestore
-import firebase_admin
-from scheduler_utils import Timer, RedisExtractor
 import numpy as np
-from lmsr import maker
+from itertools import groupby
 from concurrent.futures import ThreadPoolExecutor
+
+from lmsr import maker
+from scheduler_utils import Timer, RedisExtractor, firebase
 
 
 class FirebaseMarketJobs:
 
     def __init__(self):
 
-        cred = credentials.Certificate('/var/www/sportfolios-431c6-firebase-adminsdk-bq76v-f490ad544c.json')
-        self.default_app = firebase_admin.initialize_app(cred)
-        self.db = firestore.client()
-        self.teams_collection = self.db.collection(u'teams')
-        self.players_collection = self.db.collection(u'players')
-
         self.redis_extractor = RedisExtractor()
         self.t = 0
 
-    
-    def get_timeframes(self):
+
+    def get_timeframes(self) -> list:
         """
         For a particular number of minutes, t, return the time horizons that we are interested in
         """
@@ -108,17 +100,19 @@ class FirebaseMarketJobs:
         info = self.get_document_updates(markets, timeframes)
 
         # send documents over in batches
-        batches = [self.db.batch()]
+        batches = [firebase.db.batch()]
 
         for i, (market, document) in enumerate(info.items()):
 
             if (i % 499) == 0:
-                batches.append(self.db.batch())
+                batches.append(firebase.db.batch())
             
             if market[-1] == 'T':
-                batches[-1].update(self.teams_collection.document(market), document)
+                batches[-1].update(firebase.teams_collection.document(market), document)
+            elif market[-1] == 'P':
+                batches[-1].update(firebase.players_collection.document(market), document)
             else:
-                batches[-1].update(self.players_collection.document(market), document)
+                logging.error(f'Cannot tell whether this is team or player: {market}')
 
         return batches
 
@@ -140,7 +134,7 @@ class FirebaseMarketJobs:
                     all_teams = f.read().splitlines()
 
                 # split on league, so all xs have the same length
-                for _, teams in groupby(all_teams, key=lambda player: player.split(':')[1]):
+                for leagueId, teams in groupby(all_teams, key=lambda player: player.split(':')[1]):
                     all_batches.append(self.get_document_batches(list(teams), timeframes))
 
             with Timer() as player_timer:
@@ -148,18 +142,16 @@ class FirebaseMarketJobs:
                 with open('/var/www/data/players.txt', 'r') as f:
                     all_players = f.read().splitlines()
 
-                # split on league, just so we maintain a reasonable number at a time
-                for _, players in groupby(all_players, key=lambda player: player.split(':')[1]):
+                # split on league, just so we maintain a reasonable number of markets at a time
+                for leagueId, players in groupby(all_players, key=lambda player: player.split(':')[1]):
                     all_batches.append(self.get_document_batches(list(players), timeframes))
                     
         with Timer() as firebase_timer:
-
+            
+            # execute firebase batch commits on seperate threads
             with ThreadPoolExecutor(max_workers=len(all_batches)) as executor:
-                executor.map(commit, all_batches)
+                executor.map(lambda batch: batch.commit(), all_batches)
 
         logging.info(f'FIREBASE MARKETS t = {self.t}. Completed update for timeframes {timeframes}. time: {cpu_timer.t + firebase_timer.t:.4f}s \t team time: {team_timer.t:.4f}s \t player time: {player_timer.t:.4f}s \t cpu time: {cpu_timer.t:.4f}s \t firebase time: {firebase_timer.t:.4f}s')
 
         self.t += 60
-
-def commit(batch):
-    return batch.commit()

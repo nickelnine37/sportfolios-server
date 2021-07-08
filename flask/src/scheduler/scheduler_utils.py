@@ -1,7 +1,8 @@
 import time
-import json
+# import json
 import redis
 import orjson
+from firebase_admin import credentials, firestore, initialize_app
 
 class Timer:
     """
@@ -9,14 +10,26 @@ class Timer:
     """
 
     def __init__(self):
-        pass
+        self.pause_time = 0
+        self.p0 = None
 
     def __enter__(self):
         self.t0 = time.time()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.t = time.time() - self.t0
+        self.t = time.time() - self.t0 - self.pause_time
+
+    def pause(self):
+        if self.p0 is None:
+            self.p0 = time.time()
+
+    def resume(self):
+        if self.p0 is not None:
+            self.pause_time += time.time() - self.p0
+            self.p0 = None
+
+    
 
 
 class RedisExtractor:
@@ -61,3 +74,25 @@ class RedisExtractor:
 
     def set_time(self, time_new: dict):
         self.redis_db.set('time', orjson.dumps(time_new))
+
+
+
+class Firebase:
+    """
+    Singleton class. This is necessary to ensure the app is only initialised once. Use this to access firebase options. 
+    The singleton is enforced by using only the global variable "firebase" and never instatiating the Firebase class
+    outside of this file. 
+    """
+
+    def __init__(self) -> None:
+        
+        self.default_app = initialize_app(credentials.Certificate('/var/www/sportfolios-431c6-firebase-adminsdk-bq76v-f490ad544c.json'))
+        self.db = firestore.client()
+
+        self.teams_collection = self.db.collection(u'teams')
+        self.players_collection = self.db.collection(u'players')
+        self.portfolios_collection = self.db.collection(u'portfolios')
+
+
+firebase = Firebase()
+
