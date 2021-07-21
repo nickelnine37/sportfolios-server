@@ -1,6 +1,4 @@
 import sys
-
-
 sys.path.append('/var/www/src')
 
 import os
@@ -22,18 +20,20 @@ if __name__ == '__main__':
                         filename=os.path.join(BASE_DIR, 'logs', 'jobs.log'),
                         level=logging.INFO)
 
-    logging.info(str(sys.path))
-
     scheduler = BlockingScheduler()
 
-    redis_jobs = RedisJobs()
-    firebase_market_jobs = FirebaseMarketJobs()
-    firebase_portfolio_jobs = FirebasePortfoliosJobs()
+    run_jobs = False
 
-    now = datetime.now()
-    scheduler.add_job(redis_jobs.update_all_historical_holdings, trigger='interval', minutes=2, start_date=now, next_run_time=now)
-    scheduler.add_job(firebase_market_jobs.update_all_markets, trigger='interval', minutes=60, start_date=now, next_run_time=now)
-    scheduler.add_job(firebase_portfolio_jobs.update_all_portfolios, trigger='interval', minutes=60, start_date=now, next_run_time=now)
+    if run_jobs:
+
+        redis_jobs = RedisJobs(t=0, max_interval=672)
+        firebase_market_jobs = FirebaseMarketJobs(t=0)
+        firebase_portfolio_jobs = FirebasePortfoliosJobs(t=0)
+
+        now = datetime.now()
+        scheduler.add_job(redis_jobs.update_all_historical_holdings, trigger='interval', minutes=2, start_date=now, next_run_time=now)
+        scheduler.add_job(firebase_market_jobs.update_all_markets, trigger='interval', minutes=60, start_date=now, next_run_time=now)
+        scheduler.add_job(firebase_portfolio_jobs.update_all_portfolios, trigger='interval', minutes=60, start_date=now, next_run_time=now)
 
     scheduler.start()
 

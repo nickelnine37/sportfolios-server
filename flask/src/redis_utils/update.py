@@ -1,8 +1,4 @@
 import redis
-import os
-from src.redis_utils.arrays import toRedis, fromRedis
-import numpy as np
-import json
 
 redis_db = redis.Redis(host='redis', port=6379, db=0)
 

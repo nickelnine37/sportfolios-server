@@ -23,11 +23,6 @@ def verify_user_token(token: str):
     try:
         response = auth.verify_id_token(token)
 
-        # if 'name' not in response:
-        #     response['name'] = 'ed'
-        #     response['email'] = 'ed@ed.com'
-        #     response['email_verified'] = True
-
         if not response['email_verified']:
             return False ('Not email verified', 401)
 

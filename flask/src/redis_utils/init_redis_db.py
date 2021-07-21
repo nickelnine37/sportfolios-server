@@ -1,9 +1,7 @@
+import time
 import redis
 import os
-from src.redis_utils.arrays import toRedis, fromRedis
-import numpy as np
 import json
-import logging
 
 def init_redis_f():
 
@@ -13,37 +11,35 @@ def init_redis_f():
 
     BASE_DIR = '/var/www'
 
-    with open(os.path.join(BASE_DIR, 'data', 'player_hist.json'), 'r')  as f:
+    with open(os.path.join(BASE_DIR, 'data', 'players.json'), 'r')  as f:
         players = json.loads(f.read())
 
-    with open(os.path.join(BASE_DIR, 'data', 'team_hist.json'), 'r')  as f:
+    with open(os.path.join(BASE_DIR, 'data', 'teams.json'), 'r')  as f:
         teams = json.loads(f.read())
 
-    with open(os.path.join(BASE_DIR, 'data', 'time.json'), 'r')  as f:
-        times = json.loads(f.read())
+    # with open(os.path.join(BASE_DIR, 'data', 'time.json'), 'r')  as f:
+    #     times = json.loads(f.read())
     
     with redis_db.pipeline() as pipe:
 
-        for player_id, player_hist in players.items():
+        for player_id, player_Nb in players.items():
 
-            x_current = player_hist['x']['h'][-1]
-            b_current = player_hist['b']['h'][-1]
+            pipe.set(player_id, json.dumps({'N': player_Nb['N'], 'b': player_Nb['b']}))
+            pipe.set(player_id + ':hist', json.dumps({'N': {'h': [player_Nb['N']], 'd': [player_Nb['N']], 'w': [player_Nb['N']], 'm': [player_Nb['N']], 'M': [player_Nb['N']]}, 
+                                                      'b': {'h': [player_Nb['b']], 'd': [player_Nb['b']], 'w': [player_Nb['b']], 'm': [player_Nb['b']], 'M': [player_Nb['b']]}}))
 
-            pipe.set(player_id, json.dumps({'x': x_current, 'b': b_current}))
-            pipe.set(player_id + ':hist', json.dumps(player_hist))
+        for team_id, team_xb in teams.items():
 
-        for team_id, team_hist in teams.items():
+            pipe.set(team_id, json.dumps({'x': team_xb['x'], 'b': team_xb['b']}))
+            pipe.set(team_id + ':hist', json.dumps({'x': {'h': [team_xb['x']], 'd': [team_xb['x']], 'w': [team_xb['x']], 'm': [team_xb['x']], 'M': [team_xb['x']]}, 
+                                                    'b': {'h': [team_xb['b']], 'd': [team_xb['b']], 'w': [team_xb['b']], 'm': [team_xb['b']], 'M': [team_xb['b']]}}))
 
-            x_current = team_hist['x']['h'][-1]
-            b_current = team_hist['b']['h'][-1]
+        
+        t = int(time.time())
+        pipe.set('time', json.dumps({'h': [t], 'd': [t], 'w': [t], 'm': [t], 'M': [t]}))
 
-            pipe.set(team_id, json.dumps({'x': x_current, 'b': b_current}))
-            pipe.set(team_id + ':hist', json.dumps(team_hist))
-
-        pipe.set('time', json.dumps(times))
-
-        del players
-        del teams
+        # del players
+        # del teams
 
         pipe.execute()
 

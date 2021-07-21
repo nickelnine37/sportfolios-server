@@ -63,14 +63,14 @@ class RedisJobs:
                 with open('/var/www/data/teams.txt', 'r') as f:
                     teams = f.read().splitlines()
                 
-                redis_time, python_time = self.update_historical_holdings(teams, timeframes)
+                redis_time, python_time = self.update_historical_holdings(teams, timeframes, team=True)
             
                 with open('/var/www/data/players.txt', 'r') as f:
                     all_players = f.read().splitlines()
 
                 # split on league, just so we maintain a reasonable number at a time
                 for group, players in groupby(all_players, key=lambda player: player.split(':')[1]):
-                    rtime, ptime = self.update_historical_holdings(list(players), timeframes)
+                    rtime, ptime = self.update_historical_holdings(list(players), timeframes, team=False)
                     redis_time += rtime; python_time += ptime
                     
             self.update_time(timeframes)
@@ -90,7 +90,7 @@ class RedisJobs:
             # TODO: SEND EMAIL ALERT
             logging.error(str(E))
 
-    def update_historical_holdings(self, markets: list, timeframes: list):
+    def update_historical_holdings(self, markets: list, timeframes: list, team: bool):
         """
         Given a list of markets, and a particular timeframe, grab the current holdings and 
         update the relevant historical holdings. Return the time taken for redis read and 
@@ -112,7 +112,7 @@ class RedisJobs:
                 else:
 
                     for timeframe in timeframes:
-                        hist = self.get_new_historical_holdings(timeframe, current, hist)
+                        hist = self.get_new_historical_holdings(timeframe, current, hist, team)
 
                     hist_new[market] = hist
 
@@ -122,7 +122,7 @@ class RedisJobs:
         return redis1_timer.t + redis2_timer.t, python_timer.t
 
 
-    def get_new_historical_holdings(self, timeframe: str, current: str, hist: dict):
+    def get_new_historical_holdings(self, timeframe: str, current: str, hist: dict, team: bool):
         """
         Given a timeframe, a current holdings dictionary and a historical holdings dictionary; make the necessary changes to
         the historical holdings dictionary so that the object is updated. For h, d, w, and m, this means appending
@@ -130,17 +130,22 @@ class RedisJobs:
         For M, this means appending the latest and deleting every other holding vector if the length is greater than 120. 
         """
 
-        hist['x'][timeframe].append(current['x'])
+        if team:
+            k = 'x'
+        else:
+            k = 'N'
+
+        hist[k][timeframe].append(current[k])
         hist['b'][timeframe].append(current['b'])
 
         if timeframe == 'M': 
             if len(hist['b'][timeframe]) > 120:
-                del hist['x'][timeframe][1::2]
+                del hist[k][timeframe][1::2]
                 del hist['b'][timeframe][1::2]
                 
         else:
             if len(hist['b'][timeframe]) > 60:
-                del hist['x'][timeframe][0]
+                del hist[k][timeframe][0]
                 del hist['b'][timeframe][0]
 
         return hist

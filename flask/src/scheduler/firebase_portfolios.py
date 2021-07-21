@@ -8,10 +8,10 @@ from concurrent.futures import ThreadPoolExecutor
 
 class FirebasePortfoliosJobs:
 
-    def __init__(self):
+    def __init__(self, t: int=0):
         
         self.redis_extractor = RedisExtractor()
-        self.t = 0
+        self.t = t
         self.saved_markets = {}
 
         self.timeframes = ['d', 'w', 'm', 'M']
@@ -28,7 +28,7 @@ class FirebasePortfoliosJobs:
         self.redis_time = 0
 
 
-    def add_to_saved_markets(self, markets: list):
+    def add_to_saved_markets(self, new_markets: list):
         """
         For a list of markets, go to redis and fetch the current and historical holdings. Then iterate through this
         and add the following information to self.saved_markets:
@@ -41,19 +41,19 @@ class FirebasePortfoliosJobs:
         """
 
         # only fetch markets we have not already fetched
-        markets = [market for market in markets if market not in self.saved_markets]
+        new_markets = [market for market in new_markets if market not in self.saved_markets]
 
-        if len(markets) == 0:
+        if len(new_markets) == 0:
             return
 
         with Timer() as redis_timer:
-            currents, historicals = self.redis_extractor.get_current_and_historical_holdings(markets)
+            currents, historicals = self.redis_extractor.get_current_and_historical_holdings(new_markets)
         
         self.redis_time += redis_timer.t
 
         with Timer() as cpu_timer:
 
-            for market, current, historical in zip(markets, currents, historicals): 
+            for market, current, historical in zip(new_markets, currents, historicals): 
 
                 if (current is None) or (historical is None):
                     logging.error(f'Market {market} not found in Redis')
@@ -83,6 +83,7 @@ class FirebasePortfoliosJobs:
 
             values = {}
 
+            # exclude maxly - it's value was 500
             for timeframe in ['current'] + self.timeframes[:-1]:
 
                 value = 0
@@ -91,13 +92,18 @@ class FirebasePortfoliosJobs:
                 self.add_to_saved_markets(quantities[timeframe].keys())
                 cpu_timer.resume()
                 
-                for market in quantities[timeframe]:
+                for market in quantities[timeframe].keys():
                     
                     # it might not be, if it's missing from redis, we'll just ignore??
                     if market in self.saved_markets:
 
-                        x, b = self.saved_markets[market][timeframe]['x'], self.saved_markets[market][timeframe]['b']
-                        value += maker.LMSRMarketMaker(market, x, b).spot_value(quantities[timeframe][market])
+                        if market[-1] == 'T':
+                            x, b = self.saved_markets[market][timeframe]['x'], self.saved_markets[market][timeframe]['b']
+                            value += maker.LMSRMarketMaker(market, x, b).spot_value(quantities[timeframe][market])
+                        else:
+                            N, b = self.saved_markets[market][timeframe]['N'], self.saved_markets[market][timeframe]['b']
+                            value += maker.LongShortMarketMaker(market, N, b).spot_value()
+
 
                 values[timeframe] = value
 
@@ -133,11 +139,16 @@ class FirebasePortfoliosJobs:
                 
                 for purchase in sorted_history:
 
-                    market = purchase['market'] 
+                    market = purchase['market']
+
+                    if market[-1] == 'T':
+                        q = purchase['quantity']
+                    else:
+                        pass
 
                     if purchase['time'] <= self.times[timeframe]:
                         if market not in holdings:
-                            holdings[market] = np.array(purchase['quantity'])
+                            holdings[market] = np.array()
                         else:
                             holdings[market] += np.array(purchase['quantity'])
                     else:
@@ -164,13 +175,13 @@ class FirebasePortfoliosJobs:
 
             # no need to do anything fancier here, this should be the most memory efficient way to do it
             # however, there may be some timeout operation???
-            for i, doc in enumerate(firebase.portfolios_collection.stream()):
+            for i, portfolio_doc in enumerate(firebase.portfolios_collection.stream()):
             
-                document = self.get_document_update(self.get_quantities_dict(doc.to_dict()))
+                document = self.get_document_update(self.get_quantities_dict(portfolio_doc.to_dict()))
 
                 if (i % 499) == 0:
                     batches.append(firebase.db.batch())
-                    batches[-1].update(firebase.portfolios_collection.document(doc.id), document)
+                    batches[-1].update(firebase.portfolios_collection.document(portfolio_doc.id), document)
                 
             # execute firebase batch commits on seperate threads
             with ThreadPoolExecutor(max_workers=len(batches)) as executor:

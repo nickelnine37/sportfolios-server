@@ -2,7 +2,7 @@ import redis
 import json
 import os
 import logging
-from src.lmsr.maker import LMSRMarketMaker, MultiMarketMaker, _MultiMarketMaker
+from src.lmsr.maker import LMSRMarketMaker, LMSRMultiMarketMaker, LMSRMultiMarketMaker
 from src.redis_utils.exceptions import ResourceNotFoundError
 import numpy as np
 
@@ -55,13 +55,13 @@ class Market:
         assert isinstance(daily_b, dict)
         assert daily_x.keys() == daily_b.keys()
 
-        self.daily_MM = MultiMarketMaker(self.name, self.daily_x, self.daily_b)
+        self.daily_MM = LMSRMultiMarketMaker(self.name, self.daily_x, self.daily_b)
 
     def get_daily_xb(self):
 
-        xhist = json.loads(redis_db.get(market.name + ':xhist'))['d']
-        bhist = json.loads(redis_db.get(market.name + ':bhist'))['d']
-        market.set_daily_xb(xhist, bhist)
+        xhist = json.loads(redis_db.get(self.name + ':xhist'))['d']
+        bhist = json.loads(redis_db.get(self.name + ':bhist'))['d']
+        self.set_daily_xb(xhist, bhist)
 
         
     def current_back_price(self):
@@ -179,7 +179,7 @@ class _Market:
         if self.N is None:
             self.N = len(daily_x[0])
 
-        self.daily_MM = _MultiMarketMaker(self.name, self.daily_x, self.daily_b)
+        self.daily_MM = LMSRMultiMarketMaker(self.name, self.daily_x, self.daily_b)
         
     def current_back_price(self):
         return self.MM.spot_value(q=10 * np.exp(- np.linspace(0, self.N - 1, self.N)[::-1] / self.back_divisor))
