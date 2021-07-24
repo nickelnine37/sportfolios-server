@@ -77,7 +77,7 @@ def push_transaction_to_firebase(purchse_form: dict) -> None:
     current = doc.get()
 
     if not current.exists:
-        raise ResourceNotFoundError
+        raise ResourceNotFoundError('This portfolio does not exist')
 
     current = current.to_dict()
 
@@ -85,6 +85,13 @@ def push_transaction_to_firebase(purchse_form: dict) -> None:
     quantity = purchse_form['quantity']
     price = purchse_form['price']
 
+    # put the L/S tag back
+    if market[-1] == 'P':
+        if purchse_form['long']:
+            market += 'L'
+        else:
+            market += 'S'
+        
     # NOTE we can treat quantity as a array regardless of whether it's an array or a float, because .tolist()
     # returns a float when we have a numpy array of a number 
 
@@ -98,12 +105,12 @@ def push_transaction_to_firebase(purchse_form: dict) -> None:
     else:
         doc.update({f'holdings.{market}': quantity})
 
-    doc.update({f'holdings.cash': [current['holdings']['cash'][0] - price]})
+    doc.update({f'holdings.cash': current['holdings']['cash'] - price})
 
     t = int(time.time()) 
 
-    doc.update({'history': firestore.ArrayUnion([{'market': 'cash', 'quantity': [-price], 'time': t}, 
-                                                    {'market': market, 'quantity': quantity, 'time': t}])})
+    doc.update({'history': firestore.ArrayUnion([{'market': 'cash', 'quantity': -price,   'time': t}, 
+                                                 {'market': market, 'quantity': quantity, 'time': t}])})
 
 
 
@@ -122,7 +129,6 @@ class PurchaseForm:
         market = post_form.get('market')
         quantity = post_form.get('quantity')
         price = post_form.get('price')
-        long = post_form.get('long')
         
         for entry, value in zip(['market', 'portfolioId', 'quantity', 'price'], [market, portfolioId, quantity, price]):
             if value is None:
@@ -130,28 +136,36 @@ class PurchaseForm:
 
         if market[-1] == 'T':
             team = True
-        elif market[-1] == 'P':
+        elif market[-2] == 'P':
             team = False
         else:
             raise InvalidMarketError(f'The market string ({market}) is malformed')
 
-        if not team and long is None:
-            raise MissingEntriesError('Player is selected but long is not supplied')
+        if not team:
+            if market[-1] == 'L':
+                long = True
+            elif market[-1] == 'S':
+                long = False
+            else:
+                raise InvalidMarketError(f'The player market string ({market}) is malformed - it must contain long/short information')
+            # strip the L/S off
+            market = market[:-1]
+        else:
+            long = None
         
         try:
             quantity = json.loads(quantity)
             price = float(price)
-            long = json.loads(long)
 
-        except Exception:
-            raise PurchaseFormError(f'One of quantity ({quantity}), price ({price}) or long ({long}) is malformed')
+        except:
+            raise PurchaseFormError(f'One of quantity ({quantity}), price ({price}) is malformed')
 
         if not check_portfolio(portfolioId, uid):
             raise PortfolioError(f'The portfiolio ID {portfolioId} does not match the user ID {uid}, or cannot be found')
 
         self.form = {'uid': uid, 
                      'portfolioId': portfolioId, 
-                     'market': market, 
+                     'market': market, # this is the market without the L/S tag
                      'quantity': quantity, 
                      'price': price,
                      'team': team,

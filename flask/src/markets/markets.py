@@ -2,7 +2,7 @@ import redis
 import json
 import os
 import logging
-from src.lmsr.maker import LMSRMarketMaker, LMSRMultiMarketMaker, LMSRMultiMarketMaker
+from src.lmsr.classic import LMSRMarketMaker, LMSRMultiMarketMaker
 from src.redis_utils.exceptions import ResourceNotFoundError
 import numpy as np
 
@@ -70,7 +70,7 @@ class Market:
 
 
     def daily_back_price(self):
-        return self.daily_MM.value(q=10 * np.exp(- np.linspace(0, self.N - 1, self.N) / 6))
+        return self.daily_MM.spot_value(q=10 * np.exp(- np.linspace(0, self.N - 1, self.N) / 6))
 
 
     def current_holding(self, pipe=None):
@@ -186,7 +186,7 @@ class _Market:
 
 
     def daily_back_price(self):
-        return self.daily_MM.value(q=10 * np.exp(- np.linspace(0, self.N - 1, self.N)[::-1] / self.back_divisor))
+        return self.daily_MM.spot_value(q=10 * np.exp(- np.linspace(0, self.N - 1, self.N)[::-1] / self.back_divisor))
 
 
     def current_holding(self, pipe=None):

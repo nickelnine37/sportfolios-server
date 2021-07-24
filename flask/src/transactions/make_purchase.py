@@ -1,15 +1,14 @@
 import uuid
 import redis
 import numpy as np
-import json
+import orjson
 import logging
-from src.lmsr.maker import LMSRMarketMaker, LongShortMarketMaker
+from src.lmsr.classic import LMSRMarketMaker
+from src.lmsr.long_short import LongShortMarketMaker
 from src.redis_utils.exceptions import ResourceNotFoundError
 import time
 from rq_scheduler import Scheduler
 from datetime import timedelta
-from typing import Union
-
 
 redis_db = redis.Redis(host='redis', port=6379, db=0)
 scheduler = Scheduler(connection=redis_db)
@@ -33,20 +32,18 @@ def make_purchase(purchase_form: dict) -> float:
     for i in range(1, 101):
 
         try:
-
-            current = json.loads(redis_db.get(market))
+            current = orjson.loads(redis_db.get(market))
 
             if team:
                 maker = LMSRMarketMaker(market, current['x'], current['b'])
                 price = maker.price_trade(quantity)
                 current['x'] = (np.array(current['x']) + np.array(quantity)).tolist()
-
             else:
                 maker = LongShortMarketMaker(market, current['N'], current['b'])
                 price = maker.price_trade(quantity, long)
                 current['N'] += quantity * (-1) ** (~long)
             
-            redis_db.set(market, json.dumps(current))
+            redis_db.set(market, orjson.dumps(current))
             redis_db.unwatch()
             success = True
             break
@@ -78,16 +75,14 @@ def undo_purchase(purchase_form: dict):
     for i in range(1, 201):
 
         try:
-
-            current = json.loads(redis_db.get(market))
+            current = orjson.loads(redis_db.get(market))
 
             if team:
                 current['x'] = (np.array(current['x']) - np.array(quantity)).tolist()
-
             else:
                 current['N'] -= quantity * (-1) ** (~long)
             
-            redis_db.set(market, json.dumps(current))
+            redis_db.set(market, orjson.dumps(current))
             redis_db.unwatch()
             success = True
             break
@@ -113,7 +108,7 @@ def schedule_undo_purchase(purchase_form: dict):
 
     cancelId = uuid.uuid4().hex
     purchase_form['job_id'] = scheduler.enqueue_in(timedelta(seconds=60), undo_purchase, purchase_form).id
-    redis_db.setex(cancelId, timedelta(seconds=60), value=json.dumps(purchase_form))
+    redis_db.setex(cancelId, timedelta(seconds=60), value=orjson.dumps(purchase_form))
 
     return cancelId
 

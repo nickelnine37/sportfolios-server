@@ -1,10 +1,12 @@
 
 import logging
+import os
 import numpy as np
 from itertools import groupby
 from concurrent.futures import ThreadPoolExecutor
 
-from lmsr import maker
+from lmsr.classic import LMSRMultiMarketMaker
+from lmsr.long_short import LongShortMultiMarketMaker
 from scheduler_utils import Timer, RedisExtractor, firebase
 
 
@@ -47,7 +49,7 @@ class FirebaseMarketJobs:
                 logging.error(f'Cannot perform document update for {market}: len(bs) != len(xs)')
                 return None
 
-            return maker.LMSRMultiMarketMaker(market, xs, bs).value(q)
+            return LMSRMultiMarketMaker(market, xs, bs).spot_value(q)
         else:
             # we only want roughly 30 values in the time series, and definitely the current value
             Ns = historical['N'][timeframe][::len(historical['N'][timeframe]) // 30 + 1] + [current['N']]
@@ -57,7 +59,7 @@ class FirebaseMarketJobs:
                 logging.error(f'Cannot perform document update for {market}: len(bs) != len(Ns)')
                 return None
 
-            return maker.LongShortMultiMarketMaker(market, Ns, bs).spot_value()
+            return LongShortMultiMarketMaker(market, Ns, bs).spot_value(long=True)
         
 
     def get_document_updates(self, markets: list, timeframes: list, team: bool) -> dict:
@@ -134,36 +136,39 @@ class FirebaseMarketJobs:
         Run through all markets and make the necessary updates to firebase
         """
 
-        timeframes = self.get_timeframes()
+        if self.t % 60 == 0:
 
-        all_batches = []
+            timeframes = self.get_timeframes()
 
-        with Timer() as cpu_timer:
+            all_batches = []
 
-            with Timer() as team_timer:
+            with Timer() as cpu_timer:
 
-                with open('/var/www/data/teams.txt', 'r') as f:
-                    all_teams = f.read().splitlines()
+                with Timer() as team_timer:
 
-                # split on league, so all xs have the same length
-                for leagueId, teams in groupby(all_teams, key=lambda player: player.split(':')[1]):
-                    all_batches += self.get_document_batches(list(teams), timeframes, team=True)
+                    with open('/var/www/data/teams.txt', 'r') as f:
+                        all_teams = f.read().splitlines()
 
-            with Timer() as player_timer:
-                
-                with open('/var/www/data/players.txt', 'r') as f:
-                    all_players = f.read().splitlines()
+                    # split on league, so all xs have the same length
+                    for leagueId, teams in groupby(all_teams, key=lambda player: player.split(':')[1]):
+                        all_batches += self.get_document_batches(list(teams), timeframes, team=True)
 
-                # split on league, just so we maintain a reasonable number of markets at a time
-                for leagueId, players in groupby(all_players, key=lambda player: player.split(':')[1]):
-                    all_batches += self.get_document_batches(list(players), timeframes, team=False)
+                with Timer() as player_timer:
                     
-        with Timer() as firebase_timer:
+                    with open('/var/www/data/players.txt', 'r') as f:
+                        all_players = f.read().splitlines()
+
+                    # split on league, just so we maintain a reasonable number of markets at a time
+                    for leagueId, players in groupby(all_players, key=lambda player: player.split(':')[1]):
+                        all_batches += self.get_document_batches(list(players), timeframes, team=False)
+                        
+            with Timer() as firebase_timer:
+                
+                # execute firebase batch commits on seperate threads
+                with ThreadPoolExecutor(max_workers=os.cpu_count() + 4) as executor:
+                    executor.map(lambda batch: batch.commit(), all_batches)
+
             
-            # execute firebase batch commits on seperate threads
-            with ThreadPoolExecutor(max_workers=len(all_batches)) as executor:
-                executor.map(lambda batch: batch.commit(), all_batches)
+            logging.info(f'FIREBASE MARKETS t = {self.t}. Completed update for timeframes {timeframes}. time: {cpu_timer.t + firebase_timer.t:.4f}s \t team time: {team_timer.t:.4f}s \t player time: {player_timer.t:.4f}s \t cpu time: {cpu_timer.t:.4f}s \t firebase time: {firebase_timer.t:.4f}s')
 
-        logging.info(f'FIREBASE MARKETS t = {self.t}. Completed update for timeframes {timeframes}. time: {cpu_timer.t + firebase_timer.t:.4f}s \t team time: {team_timer.t:.4f}s \t player time: {player_timer.t:.4f}s \t cpu time: {cpu_timer.t:.4f}s \t firebase time: {firebase_timer.t:.4f}s')
-
-        self.t += 60
+        self.t += 2

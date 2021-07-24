@@ -1,9 +1,11 @@
 from itertools import groupby
+from os import scandir
 import time
 from scheduler_utils import Timer, RedisExtractor
 from apscheduler.schedulers.blocking import BlockingScheduler
 import logging
 import json
+import numpy as np
 
 ## TODO: Under the current implementation, because the holdings vectors are not updated at exactly
 ## the same time as the time log, they may be out of sync when a client makes a request. This will
@@ -28,12 +30,13 @@ class RedisJobs:
 
     """
 
-    def __init__(self, t: int=0, max_interval: int=672):
+    def __init__(self, t: int=0, max_interval: int=672, add_noise: bool=False):
 
         self.redis_extractor = RedisExtractor()
         self.t = t
         self.max_interval = max_interval
         self.max_interval_needs_doubling = False
+        self.add_noise = add_noise
 
 
     def get_timeframes(self):
@@ -110,6 +113,12 @@ class RedisJobs:
                     logging.error(f'Cannot update hist {timeframes} holdings for {market}. Redis returned None')
 
                 else:
+                    
+                    if self.add_noise:
+                        if team:
+                            current['x'] = np.round(np.array(current['x']) + np.random.normal(loc=np.linspace(0, current['b'] / 10000 , len(current['x'])), scale= current['b'] / 100), 2).tolist()
+                        else:
+                            current['N'] = float(np.round(current['N'] + np.random.normal(loc=current['b'] / 10000, scale=current['b'] / 100), 2))
 
                     for timeframe in timeframes:
                         hist = self.get_new_historical_holdings(timeframe, current, hist, team)
@@ -117,7 +126,11 @@ class RedisJobs:
                     hist_new[market] = hist
 
         with Timer() as redis2_timer:
-            self.redis_extractor.send_historical_holdings(hist_new)
+            self.redis_extractor.write_historical_holdings(hist_new)
+            if self.add_noise:
+                self.redis_extractor.write_current_holdings(markets, all_current)
+
+
         
         return redis1_timer.t + redis2_timer.t, python_timer.t
 
@@ -136,6 +149,8 @@ class RedisJobs:
             k = 'N'
 
         hist[k][timeframe].append(current[k])
+
+        
         hist['b'][timeframe].append(current['b'])
 
         if timeframe == 'M': 

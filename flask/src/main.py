@@ -58,7 +58,12 @@ def current_holdings():
         return 'No market specified', 400
  
     elif market is None:
-        result = read_data.get_multiple_latest_quantities([m for m in markets.split(',') if m != ''])
+        
+        markets_list = list(set([m for m in markets.split(',') if m != '']))
+        if len(markets_list) > 100:
+            return 'Request has exceeded markets limit. ', 400
+
+        result = read_data.get_multiple_latest_quantities(markets_list)
         logging.info(f'GET; current_holdings; {info["user_id"]}; {remote_ip}; success; {markets}')
         for m, quantity in result.items():
             if quantity is None:
@@ -116,7 +121,11 @@ def historical_holdings():
 
     elif market is None:
 
-        result = read_data.get_multiple_historical_quantities([m for m in markets.split(',') if m != ''])
+        markets_list = list(set([m for m in markets.split(',') if m != '']))
+        if len(markets_list) > 100:
+            return 'Request has exceeded markets limit. ', 400
+
+        result = read_data.get_multiple_historical_quantities(markets_list)
         logging.info(f'GET; historical_holdings; {info["user_id"]}; {remote_ip}; success; {markets}')
         for m, quantity in result.items():
             if quantity is None:
@@ -151,7 +160,6 @@ def purchase():
             market: the desired market
             quantity: the desired quantity vector
             price: the desired price to 2 dp
-            long: whether the quantity is long or short (players only)
 
     Response contains a cancellation ID. If the user wishes to confirm or cancel an order 
     for a price different to what they specified, they can send back a request and include 

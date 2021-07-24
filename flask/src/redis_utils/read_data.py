@@ -1,5 +1,5 @@
 import redis
-import json
+import orjson
 from src.redis_utils.exceptions import ResourceNotFoundError
 
 redis_db = redis.Redis(host='redis', port=6379, db=0)
@@ -16,7 +16,7 @@ def get_latest_quantities(market: str) -> dict:
     if result is None:
         raise ResourceNotFoundError
 
-    return json.loads(result)
+    return orjson.loads(result)
 
 
 def get_multiple_latest_quantities(markets: list) -> dict:
@@ -34,7 +34,7 @@ def get_multiple_latest_quantities(markets: list) -> dict:
 
         results = pipe.execute()
 
-    return {market: json.loads(result) for market, result in zip(markets, results)}
+    return {market: orjson.loads(result) if result is not None else None for market, result in zip(markets, results)}
 
 
 def get_historical_quantities(market: str) -> dict:
@@ -55,7 +55,7 @@ def get_historical_quantities(market: str) -> dict:
     if result is None:
         raise ResourceNotFoundError
 
-    return {'data': json.loads(result), 'time': json.loads(time)}
+    return {'data': orjson.loads(result), 'time': orjson.loads(time)}
 
 
 def get_multiple_historical_quantities(markets: list) -> dict:
@@ -73,5 +73,5 @@ def get_multiple_historical_quantities(markets: list) -> dict:
         
         results = pipe.execute()
 
-    return {'data': {market: json.loads(result) for market, result in zip(markets, results[:-1])}, 'time': json.loads(results[-1])}
+    return {'data': {market: orjson.loads(result) if result is not None else None for market, result in zip(markets, results[:-1])}, 'time': orjson.loads(results[-1])}
 
