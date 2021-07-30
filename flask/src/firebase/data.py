@@ -2,9 +2,11 @@ from firebase_admin import firestore
 from src.redis_utils.exceptions import ResourceNotFoundError
 import numpy as np
 import time
+import logging
 
 db = firestore.client()
 portfolios = db.collection(u'portfolios')
+users = db.collection(u'users')
 
 
 def get_portfolio(portfolioId: str) -> dict:
@@ -21,30 +23,29 @@ def check_portfolio(portfolioId: str, uid: str) -> bool:
     return portfolio['user'] == uid
 
 
-def make_purchase(uid: str, portfolioId: str, market: str, quantity: list, price: float):
+def add_new_portfolio(uid: str, name: str, public: bool):
+
+    logging.info(f'Attempting portfolio add: {uid} {name} {public}')
+
+    new_portfolio = {
+      'user': uid,
+      'name': name,
+      'public': public,
+      'cash': 500.0,
+      'current_value': 500.0,
+      'holdings': {},
+      'transactions': [],
+      'returns_d': 0.0,
+      'returns_w': 0.0, 
+      'returns_m': 0.0, 
+      'returns_M': 0.0, 
+      'created': time.time(),
+      'active': True,
+    }
+
+    timestamp, new_doc = portfolios.add(new_portfolio)
     
-    doc = portfolios.document(portfolioId)
-    current = doc.get()
+    users.document(uid).update({'portfolios':  firestore.ArrayUnion([new_doc.id])})
 
-    if not current.exists:
-        raise ResourceNotFoundError
-
-    current = current.to_dict()
-
-    if market in current['holdings']:
-        newQ = np.array(current['holdings'][market]) + np.array(quantity)
-        if np.isclose(newQ, 0, atol=1e-3).all():
-            doc.update({f'holdings.{market}': firestore.DELETE_FIELD})
-        else:
-            doc.update({f'holdings.{market}': (np.array(current['holdings'][market]) + np.array(quantity)).tolist()})
-
-    else:
-        doc.update({f'holdings.{market}': quantity})
-
-    doc.update({f'holdings.cash': [current['holdings']['cash'][0] - price]})
-
-    t = int(time.time()) 
-
-    doc.update({'history': firestore.ArrayUnion([{'market': 'cash', 'quantity': [-price],   'time': t}, 
-                                                 {'market': market, 'quantity': quantity, 'time': t}])})
+    return new_doc.id
 

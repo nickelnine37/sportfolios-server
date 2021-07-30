@@ -21,7 +21,7 @@ def make_purchase(purchase_form: dict) -> float:
     than 100 times, raise a watch error. 
     """
 
-    market, quantity, team, long = purchase_form['market'], purchase_form['quantity'], purchase_form['team'], purchase_form['long']
+    market, quantity, team = purchase_form['market'], purchase_form['quantity'], purchase_form['team']
 
     if not redis_db.exists(market):
         raise ResourceNotFoundError
@@ -35,14 +35,12 @@ def make_purchase(purchase_form: dict) -> float:
             current = orjson.loads(redis_db.get(market))
 
             if team:
-                maker = LMSRMarketMaker(market, current['x'], current['b'])
-                price = maker.price_trade(quantity)
+                price = LMSRMarketMaker(market, current['x'], current['b']).price_trade(quantity)
                 current['x'] = (np.array(current['x']) + np.array(quantity)).tolist()
             else:
-                maker = LongShortMarketMaker(market, current['N'], current['b'])
-                price = maker.price_trade(quantity, long)
-                current['N'] += quantity * (-1) ** (~long)
-            
+                price = LongShortMarketMaker(market, current['N'], current['b']).price_trade(quantity)
+                current['N'] += (quantity[0] - quantity[1])
+
             redis_db.set(market, orjson.dumps(current))
             redis_db.unwatch()
             success = True
@@ -64,7 +62,7 @@ def undo_purchase(purchase_form: dict):
     For a given purchase form, undo the associated purchase
     """
 
-    market, quantity, team, long = purchase_form['market'], purchase_form['quantity'], purchase_form['team'], purchase_form['long']
+    market, quantity, team = purchase_form['market'], purchase_form['quantity'], purchase_form['team'], purchase_form['long']
 
     if not redis_db.exists(market):
         raise ResourceNotFoundError
@@ -80,7 +78,7 @@ def undo_purchase(purchase_form: dict):
             if team:
                 current['x'] = (np.array(current['x']) - np.array(quantity)).tolist()
             else:
-                current['N'] -= quantity * (-1) ** (~long)
+                current['N'] -= (quantity[0] - quantity[1])
             
             redis_db.set(market, orjson.dumps(current))
             redis_db.unwatch()

@@ -2,7 +2,8 @@ import json
 from src.redis_utils.exceptions import ResourceNotFoundError
 from firebase_admin import firestore
 from src.transactions.make_purchase import cancel_undo_scheduled_purchase, make_purchase, schedule_undo_purchase, undo_purchase, undo_scheudlued_purchase_now
-import redis 
+import logging
+import redis
 import math
 import numpy as np
 import time
@@ -19,11 +20,11 @@ def get_portfolio(portfolioId: str) -> dict:
     return doc.to_dict()
 
 
-def check_portfolio(portfolioId: str, uid: str) -> bool:
-    portfolio = get_portfolio(portfolioId)
-    if portfolio is None:
-        return False
-    return portfolio['user'] == uid
+# def check_portfolio(portfolioId: str, uid: str) -> bool:
+#     portfolio = get_portfolio(portfolioId)
+#     if portfolio is None:
+#         return False
+#     return portfolio['user'] == uid
 
 
 def round_decimals_up(number:float, decimals:int=2):
@@ -54,6 +55,9 @@ class PortfolioError(PurchaseFormError):
 class TransactionError(PurchaseFormError):
     pass
 
+class InsufficientFundsError(PurchaseFormError):
+    pass
+
 
 
 class ConfirmationFormError(ValueError):
@@ -74,43 +78,41 @@ def push_transaction_to_firebase(purchse_form: dict) -> None:
     """
     
     doc = portfolios.document(purchse_form['portfolioId'])
-    current = doc.get()
+    portfolio = doc.get()
 
-    if not current.exists:
-        raise ResourceNotFoundError('This portfolio does not exist')
-
-    current = current.to_dict()
+    portfolio = portfolio.to_dict()
 
     market = purchse_form['market']
-    quantity = purchse_form['quantity']
+    quantity = purchse_form['quantity']  # always a list
     price = purchse_form['price']
 
-    # put the L/S tag back
-    if market[-1] == 'P':
-        if purchse_form['long']:
-            market += 'L'
-        else:
-            market += 'S'
+    if portfolio['cash'] < price:
+        raise InsufficientFundsError
+
+    doc_update = {}
+    
+    if market in portfolio['holdings']:
+        newQ = np.array(portfolio['holdings'][market], dtype=np.float64) + np.array(quantity, dtype=np.float64)
+
+        # they've sold their entire holdings
+        if np.isclose(newQ, 0, atol=5e-3).all():
+            doc_update[f'holdings.{market}'] = firestore.DELETE_FIELD
         
-    # NOTE we can treat quantity as a array regardless of whether it's an array or a float, because .tolist()
-    # returns a float when we have a numpy array of a number 
-
-    if market in current['holdings']:
-        newQ = np.array(current['holdings'][market]) + np.array(quantity)
-        if np.isclose(newQ, 0, atol=1e-3).all():
-            doc.update({f'holdings.{market}': firestore.DELETE_FIELD})
+        # they've partially sold their holdings, or bought more
         else:
-            doc.update({f'holdings.{market}': newQ.tolist()})
-
+            doc_update[f'holdings.{market}'] =  newQ.tolist()
+    
+    # this is a new holding 
     else:
-        doc.update({f'holdings.{market}': quantity})
+        doc_update[f'holdings.{market}'] =  quantity
 
-    doc.update({f'holdings.cash': current['holdings']['cash'] - price})
+    doc_update[f'cash'] = portfolio['cash'] - price
 
-    t = int(time.time()) 
+    t = time.time()
 
-    doc.update({'history': firestore.ArrayUnion([{'market': 'cash', 'quantity': -price,   'time': t}, 
-                                                 {'market': market, 'quantity': quantity, 'time': t}])})
+    doc_update['transactions'] = firestore.ArrayUnion([{'market': market, 'quantity': quantity, 'time': t, 'price': price}])
+
+    doc.update(doc_update)
 
 
 
@@ -136,23 +138,11 @@ class PurchaseForm:
 
         if market[-1] == 'T':
             team = True
-        elif market[-2] == 'P':
+        elif market[-1] == 'P':
             team = False
         else:
             raise InvalidMarketError(f'The market string ({market}) is malformed')
 
-        if not team:
-            if market[-1] == 'L':
-                long = True
-            elif market[-1] == 'S':
-                long = False
-            else:
-                raise InvalidMarketError(f'The player market string ({market}) is malformed - it must contain long/short information')
-            # strip the L/S off
-            market = market[:-1]
-        else:
-            long = None
-        
         try:
             quantity = json.loads(quantity)
             price = float(price)
@@ -160,16 +150,23 @@ class PurchaseForm:
         except:
             raise PurchaseFormError(f'One of quantity ({quantity}), price ({price}) is malformed')
 
-        if not check_portfolio(portfolioId, uid):
-            raise PortfolioError(f'The portfiolio ID {portfolioId} does not match the user ID {uid}, or cannot be found')
+        self.portfolio = get_portfolio(portfolioId)
+
+        if self.portfolio is None:
+            raise PortfolioError('This portfolio does not exist')
+
+        if self.portfolio['user'] != uid:
+            raise PortfolioError(f'The portfiolio ID {portfolioId} does not match the user ID {uid}')
+
+        if self.portfolio['cash'] < price:
+            raise InsufficientFundsError('Insufficient funds in this portfolio for this transaction')
 
         self.form = {'uid': uid, 
                      'portfolioId': portfolioId, 
-                     'market': market, # this is the market without the L/S tag
+                     'market': market, 
                      'quantity': quantity, 
                      'price': price,
-                     'team': team,
-                     'long': long}
+                     'team': team}
 
 
     def prices_consistent(self, price: float):
@@ -184,7 +181,7 @@ class PurchaseForm:
 
     def attempt_purchase(self) -> dict:
         """
-        Attempt to make a purchse for the given purchase form. If the transaction takes place, 
+        Attempt to make a purchase for the given purchase form. If the transaction takes place,
         return dict giving information, for example whether the price is as the user expected
         and the cancelID if necessary. 
         """
@@ -202,8 +199,14 @@ class PurchaseForm:
 
             try:
                 push_transaction_to_firebase(self.form)
-            except:
+
+            except InsufficientFundsError:
                 undo_purchase(self.form)
+                return 'Insufficient funds'
+
+            except Exception as E:
+                undo_purchase(self.form)
+                logging.error(str(E))
 
             return {'success': True, 'price': price, 'cancelId': None}
 
@@ -221,7 +224,7 @@ class ConfirmationForm:
 
         for entry, value in zip(['cancelId', 'confirm'], [cancelId, confirm]):
             if value is None:
-                raise MissingEntriesError(f'{entry} is missing from the purchase form')
+                raise MissingEntriesError(f'{entry} is missing from the confirmation form')
 
         try:
             self.confirm = json.loads(confirm)
@@ -240,20 +243,42 @@ class ConfirmationForm:
         else:
             self.uid = uid
 
+        self.portfolio = get_portfolio(self.old_purchase_form['portfolioId'])
+
+        if self.portfolio is None:
+            raise PortfolioError('This portfolio does not exist')
+
+        if self.portfolio['user'] != uid:
+            raise ConfirmationFormError(f'The portfiolio ID {self.old_purchase_form["portfolioId"]} does not match the user ID {uid}, or cannot be found')
+
+
     
     def process_request(self):
         """
-        Process the users request to either confirm or redact their order
+        Process the user's request to either confirm or redact their order
         """
         
         # the user wants to proceed with the transaction, so we must cancel the undoing
         # an issue may arise if it's already been cancelled, i.e. they were too slow
         if self.confirm:
+
+            if self.portfolio['cash'] < self.old_purchase_form['price']:
+                raise InsufficientFundsError('Insufficient funds in this portfolio for this transaction')
+            
             try:
                 cancel_undo_scheduled_purchase(self.old_purchase_form)
-                return 'Order confirmed'
+
             except ResourceNotFoundError:
                 raise ConfirmationTooLateError('This order could not be confirmed as the cancellation has already happened')
+
+            try:
+                push_transaction_to_firebase(self.old_purchase_form)
+                return 'Order confirmed'
+
+            except ResourceNotFoundError:
+                PortfolioError('The specified portfolio does not exist')
+                # just undo it now, as we'ev already cancelled the undoing
+                undo_purchase(self.old_purchase_form)
 
         # the user wants us to cancel their original transaction, so lets do it now
         # it might have already happened, which is no problem

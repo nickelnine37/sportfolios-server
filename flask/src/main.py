@@ -1,6 +1,8 @@
 import os
 import logging
+from src.firebase.data import add_new_portfolio
 from flask import Flask, request, jsonify
+import orjson
 
 # LOAD THIS FIRST TO ACCESS FIREBASE STUFF
 from src.firebase.authentication import verify_user_token, verify_admin
@@ -41,6 +43,9 @@ def current_holdings():
                     for market  {'b': 4000, 'x': [1, 2, 3]}
                     for markets {'1:8:18378T': {'b': 4000, 'x': [1, 2, 3]}, '1182:8:18378P': {'b': 2000, 'N': 400}}
     """
+
+    if request.headers.get('Authorization') is None:
+        return f'Authorization ID needed', 407
 
     authorised, info = verify_user_token(request.headers.get('Authorization'))
     remote_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
@@ -103,6 +108,9 @@ def historical_holdings():
                                           [6, 7, 8, 9, ...], ...], ...}
                              }
     """
+
+    if request.headers.get('Authorization') is None:
+        return f'Authorization ID needed', 407
 
     authorised, info = verify_user_token(request.headers.get('Authorization'))
     remote_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
@@ -170,6 +178,9 @@ def purchase():
         if price is not agreed, JSON: {'success': False, 'price': sealed_price, 'cancelId': id}
     """
 
+    if request.headers.get('Authorization') is None:
+        return f'Authorization ID needed', 407
+
     authorised, info = verify_user_token(request.headers.get('Authorization'))
     remote_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
 
@@ -184,7 +195,7 @@ def purchase():
         logging.warning(f'Invalid purchase form: {E}')
         return f'Invalid purchase form: {E}', 400
 
-    try: 
+    try:
         return purchase_form.attempt_purchase(), 200
     except TransactionError as E:
         logging.warning(f'Transaction failed: {E}')
@@ -205,6 +216,9 @@ def confirm_order():
 
     """
 
+    if request.headers.get('Authorization') is None:
+        return f'Authorization ID needed', 407
+
     authorised, info = verify_user_token(request.headers.get('Authorization'))
     remote_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
 
@@ -218,6 +232,9 @@ def confirm_order():
     except ConfirmationFormError as E:
         logging.warning(f'Invalid confirmation form: {E}')
         return f'Invalid purchase form: {E}', 400
+    except PurchaseFormError as E:
+        logging.warning(f'Invalid confirmation form: {E}')
+        return f'Invalid purchase form: {E}', 400
 
     try:
         message = confirmation_form.process_request()
@@ -228,6 +245,59 @@ def confirm_order():
         return f'Unable to process request: {E}', 400
 
 
+
+@app.route('/create_portfolio', methods=['POST'])
+def create_portfolio():
+    """
+    Create a new portfolio
+
+        * Requires JWT Authorization header
+        * Request body should contain the following keys:
+
+            name: (string) the portfolio name
+            public: (bool) whether the portfolio is public
+
+    """
+
+    logging.info('Creating new portfolio')
+
+    if request.headers.get('Authorization') is None:
+        return f'Authorization ID needed', 407
+
+    authorised, info = verify_user_token(request.headers.get('Authorization'))
+    remote_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
+
+    if not authorised:
+        message, code = info
+        logging.info(f'POST; create_portfolio; unknown; {remote_ip}; fail; {info}')
+        return message, code
+
+    uid = info['uid']
+    name = request.form.get('name')
+    public = request.form.get('public')
+
+    logging.info('Everything fine so far')
+
+    if name is None or public is None:
+        return 'Form is missing one of the following: name, public', 400
+
+    try:
+        public = orjson.loads(public)
+    except:
+        return '"public" entry is malformed', 400
+
+    logging.info('almost there')
+
+    try:
+        pid = add_new_portfolio(uid, name, public)
+        return jsonify({'success': True, 'portfolioId': pid}), 200
+    except Exception as E:
+        logging.error(E)
+        return 'Unable to process request at this time', 400
+
+
+
+
 # ----------------------------------------------------------------------------
 # ----------------------------- ADMIN ENDPOINTS ------------------------------
 # ----------------------------------------------------------------------------
@@ -236,6 +306,9 @@ def confirm_order():
 
 @app.route('/init_redis', methods=['GET'])
 def init_redis():
+
+    if request.headers.get('Authorization') is None:
+        return f'Authorization ID needed', 407
 
     success, message = verify_admin(request.headers.get('Authorization'))
     remote_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
@@ -250,6 +323,9 @@ def init_redis():
 
 @app.route('/update_b', methods=['POST'])
 def update_b():
+
+    if request.headers.get('Authorization') is None:
+        return f'Authorization ID needed', 407
 
     success, message = verify_admin(request.headers.get('Authorization'))
     remote_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)

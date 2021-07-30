@@ -132,7 +132,7 @@ class TradingBot:
         market_maker = LongShortMarketMaker(market, N, b)
 
         # the market price already reflects our belief, so make no trade
-        if abs(market_maker.spot_value(long=True) - m) < 5e-4:
+        if abs(market_maker.spot_value([1, 0]) - m) < 5e-4:
             return {'market': market, 'quantity': 0, 'team': False, 'long': True, 'cost': 0}
 
         # budget is some multiple of b
@@ -140,17 +140,17 @@ class TradingBot:
 
         try:
             # how many longs would we need to buy to shift the whole market to our belief?
-            n0 = brentq(lambda n: LongShortMarketMaker(market, n, b).spot_value(long=True) - m, -40 * b, 40 * b) - N
+            n0 = brentq(lambda n: LongShortMarketMaker(market, n, b).spot_value([1, 0]) - m, -40 * b, 40 * b) - N
 
             # we should buy longs
             if n0 >= 0:
                 
                 # how mucn would this cost?
-                cost = market_maker.price_trade(n0, long=True)
+                cost = market_maker.price_trade([n0, 0])
                 
                 # If the cost is greater than our budget, how many units can we buy for our budget?
                 if cost > B:
-                    n =  brentq(lambda n: market_maker.price_trade(n, long=True) - B, -40 * b, 40 * b)
+                    n =  brentq(lambda n: market_maker.price_trade([n, 0]) - B, -40 * b, 40 * b)
                     return {'market': market, 'quantity': float(round(n, 2)), 'team': False, 'long': True, 'cost': float(round(B, 2))}
 
                 # else we can safely purchase n0 longs
@@ -160,12 +160,13 @@ class TradingBot:
             # we should buy shorts
             else:
                 
-                # how much would it cost to buy -n0 shorts?
-                cost = market_maker.price_trade(-n0, long=False)
+                # how much would it cost to buy -n0 shorts? (-n0 is +ve)
+                cost = market_maker.price_trade([0, -n0]) 
+
 
                 # If the cost is greater than our budget, how many units can we buy for our budget?
                 if cost > B:
-                    n = brentq(lambda n: market_maker.price_trade(n, long=False) - B, -40 * b, 40 * b)
+                    n = brentq(lambda n: market_maker.price_trade([0, n]) - B, -40 * b, 40 * b)
                     return {'market': market, 'quantity': float(round(n, 2)), 'team': False, 'long': False, 'cost': float(round(B, 2))}
 
                 # else we can safely purchase -n0 shorts

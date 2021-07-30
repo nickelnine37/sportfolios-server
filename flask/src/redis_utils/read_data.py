@@ -50,12 +50,21 @@ def get_historical_quantities(market: str) -> dict:
         pipe.get(market + ':hist')
         pipe.get('time')
         
-        result, time = pipe.execute()
+        data, time = pipe.execute()
 
-    if result is None:
+    if data is None:
         raise ResourceNotFoundError
+    
+    time = orjson.loads(time)
+    data = orjson.loads(data)
 
-    return {'data': orjson.loads(result), 'time': orjson.loads(time)}
+    # ensure lengths are consistent
+    for th in ['h', 'd', 'w', 'm', 'M']:
+        nt = len(time[th])
+        if len(data['b'][th]) != nt:
+            data['b'][th] = data['b'][th][:nt]
+
+    return {'data': data, 'time': time}
 
 
 def get_multiple_historical_quantities(markets: list) -> dict:
@@ -73,5 +82,25 @@ def get_multiple_historical_quantities(markets: list) -> dict:
         
         results = pipe.execute()
 
-    return {'data': {market: orjson.loads(result) if result is not None else None for market, result in zip(markets, results[:-1])}, 'time': orjson.loads(results[-1])}
+    time = orjson.loads(results[-1])
+    data =  {market: orjson.loads(result) if result is not None else None for market, result in zip(markets, results[:-1])}
+
+    # ensure lengths are consistent
+    for th in ['h', 'd', 'w', 'm', 'M']:
+        nt = len(time[th])
+        for market in markets:
+            if len(data[market]['b'][th]) != nt:
+                data[market]['b'][th] = data[market]['b'][th][:nt]
+
+    return {'data': data, 'time': time}
+
+
+# def ensure_historical_data_consistent(hist_data: dict):
+
+#     time_lens = {th: len(array) for th, array in hist_data['time'].items()}
+
+#     if 'b' in hist_data['data']:
+#         pass
+#     else:
+
 

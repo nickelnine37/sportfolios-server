@@ -12,61 +12,66 @@ class LongShortMarketMaker:
         self.market = market
         self.N = N
         self.b = b
+        k = N / b
+        
+        if k == 0:
+            self.long_price = 0.5
+        if k > 0:
+            self.long_price = ((k - 1) + np.exp(-k)) / (k * (1 - np.exp(-k)))
+        else:
+            self.long_price = (np.exp(k) * (k - 1) + 1) / (k * (np.exp(k) - 1))
 
     def __repr__(self):
         return f'LongShortMarketMaker({self.market})'
 
-    def price_trade(self, n: float, long: bool=True) -> float:
+    def price_trade(self, q: Union[list, np.ndarray]) -> float:
         """
         price of going long with n units on player
         """
-        if not long:
-            return n + self.price_trade(n=-n)
 
         N = self.N
         b = self.b
+        
+        def f(n):
+            
+            if n == 0:
+                return 0
 
-        if n == 0:
-            return 0
+            elif N == 0:
+                if n < 0:
+                    return b * np.log(b * (np.exp(n / b) - 1) / n) 
+                else:
+                    return b * np.log(b * (1 - np.exp(-n / b)) / (n * np.exp(-n / b)))
 
-        elif N == 0:
-            if n < 0:
-                return b * np.log(b * (np.exp(n / b) - 1) / n) 
+            elif N < 0:
+                if N == -n:
+                    return b * np.log(N / (b *  (np.exp(N / b) - 1)))
+                else:
+                    return b * np.log(N / (N + n) * (np.exp((N + n) / b) - 1) / (np.exp(N / b) - 1))
+
+            elif N > 0:
+                if N == -n:
+                    return b * np.log(N * np.exp(-N / b) / (b *  (1 - np.exp(-N / b))))
+                else:
+                    return b * np.log(N / (N + n) * (np.exp(n / b) - np.exp(-N / b)) / (1 - np.exp(-N / b)))
             else:
-                return b * np.log(b * (1 - np.exp(-n / b)) / (n * np.exp(-n / b)))
+                raise ValueError(f'N ({N}, type {type(N)}) not an acceptable value')
+                
+        return f(q[0]) + q[1] + f(-q[1])
 
-        elif N < 0:
-            if N == -n:
-                return b * np.log(N / (b *  (np.exp(N / b) - 1)))
-            else:
-                return b * np.log(N / (N + n) * (np.exp((N + n) / b) - 1) / (np.exp(N / b) - 1))
-
-        elif N > 0:
-            if N == -n:
-                return b * np.log(N * np.exp(-N / b) / (b *  (1 - np.exp(-N / b))))
-            else:
-                return b * np.log(N / (N + n) * (np.exp(n / b) - np.exp(-N / b)) / (1 - np.exp(-N / b)))
-        else:
-            raise ValueError(f'N ({N}, type {type(N)}) not an acceptable value')
-
-    def spot_value(self, long: bool) -> float:
+    def spot_value(self, q: Union[list, np.ndarray]) -> float:
         """
         Instantaneous price of long on player
         """
-        if not long:
-            return 1 - self.spot_value(True)
 
-        k = self.N / self.b
-
-        if k == 0:
-            return 0.5
+        cMin = min(q)
+        cMax = max(q)
         
-        if k > 0:
-            return ((k - 1) + np.exp(-k)) / (k * (1 - np.exp(-k)))
-
+        if np.argmax(q) == 0:
+            return cMin + self.long_price * (cMax - cMin)
         else:
-            return (np.exp(k) * (k - 1) + 1) / (k * (np.exp(k) - 1))
-
+            return cMax - self.long_price * (cMax - cMin)
+        
 
 class LongShortMultiMarketMaker:
     """
@@ -74,39 +79,38 @@ class LongShortMultiMarketMaker:
     of N and bs. 
     """
 
-    def __init__(self, market: str, N: Union[list, np.ndarray], b: Union[list, np.ndarray]):
+    def __init__(self, market: str, Ns: Union[list, np.ndarray], bs: Union[list, np.ndarray]):
         
         self.market = market
-        self.N = np.asarray(N)
-        self.b = np.asarray(b)
-
+        Ns = np.asarray(Ns)
+        bs = np.asarray(bs)
+        ks = Ns / bs
+        
+        m0 = ks == 0
+        mp = ks > 0; kp = ks[mp]
+        mm = ks < 0; km = ks[mm]
+        
+        self.long_price = np.zeros_like(ks)
+        
+        self.long_price[m0] = 0.5
+        self.long_price[mm] = (np.exp(km) * (km - 1) + 1) / (km * (np.exp(km) - 1))
+        self.long_price[mp] = ((kp - 1) + np.exp(-kp)) / (kp * (1 - np.exp(-kp)))
+        
     def __repr__(self):
         return f'LongShortMultiMarketMaker({self.market})'
 
-    def spot_value(self, long: bool, aslist: bool=True) -> list:
+    def spot_value(self, q: Union[list, np.ndarray], aslist=True) -> list:
         """
         instantaneous price history for player over Ns and bs
         """
         
-        if not long:
-            out = 1 - self.spot_value(True, aslist=False)
-            if aslist:  
-                return out.tolist()
-            else:
-                return out
-            
-
-        k = self.N / self.b
+        cMin = min(q)
+        cMax = max(q)
         
-        m0 = k == 0
-        mp = k > 0; kp = k[mp]
-        mm = k < 0; km = k[mm]
-        
-        out = np.zeros_like(k)
-        
-        out[m0] = 0.5
-        out[mm] = (np.exp(km) * (km - 1) + 1) / (km * (np.exp(km) - 1))
-        out[mp] = ((kp - 1) + np.exp(-kp)) / (kp * (1 - np.exp(-kp)))
+        if np.argmax(q) == 0:
+            out = cMin + self.long_price * (cMax - cMin)
+        else:
+            out = cMax - self.long_price * (cMax - cMin)
         
         if aslist:
             return out.tolist()

@@ -59,7 +59,7 @@ class FirebaseMarketJobs:
                 logging.error(f'Cannot perform document update for {market}: len(bs) != len(Ns)')
                 return None
 
-            return LongShortMultiMarketMaker(market, Ns, bs).spot_value(long=True)
+            return LongShortMultiMarketMaker(market, Ns, bs).spot_value(q)
         
 
     def get_document_updates(self, markets: list, timeframes: list, team: bool) -> dict:
@@ -84,7 +84,7 @@ class FirebaseMarketJobs:
             n_markets = len(all_current[0]['x'])
             q = np.exp(-np.linspace(0, n_markets - 1, n_markets) / 6)[::-1]
         else:
-            q = None
+            q = [1, 0]
 
         documents = {}
 
