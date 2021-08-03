@@ -57,7 +57,7 @@ class LongShortMarketMaker:
             else:
                 raise ValueError(f'N ({N}, type {type(N)}) not an acceptable value')
                 
-        return f(q[0]) + q[1] + f(-q[1])
+        return float(f(q[0]) + q[1] + f(-q[1]))
 
     def spot_value(self, q: Union[list, np.ndarray]) -> float:
         """
@@ -68,9 +68,9 @@ class LongShortMarketMaker:
         cMax = max(q)
         
         if np.argmax(q) == 0:
-            return cMin + self.long_price * (cMax - cMin)
+            return float(cMin + self.long_price * (cMax - cMin))
         else:
-            return cMax - self.long_price * (cMax - cMin)
+            return float(cMax - self.long_price * (cMax - cMin))
         
 
 class LongShortMultiMarketMaker:

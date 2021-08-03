@@ -23,7 +23,7 @@ def check_portfolio(portfolioId: str, uid: str) -> bool:
     return portfolio['user'] == uid
 
 
-def add_new_portfolio(uid: str, name: str, public: bool):
+def add_new_portfolio(uid: str, username: str, name: str, public: bool, description: str):
 
     logging.info(f'Attempting portfolio add: {uid} {name} {public}')
 
@@ -31,16 +31,20 @@ def add_new_portfolio(uid: str, name: str, public: bool):
       'user': uid,
       'name': name,
       'public': public,
+      'username': username,
+      'description': description,
       'cash': 500.0,
       'current_value': 500.0,
       'holdings': {},
       'transactions': [],
+      'current_values': {},
       'returns_d': 0.0,
       'returns_w': 0.0, 
       'returns_m': 0.0, 
       'returns_M': 0.0, 
       'created': time.time(),
       'active': True,
+      'colours': {'cash': '#58d31f'},
     }
 
     timestamp, new_doc = portfolios.add(new_portfolio)

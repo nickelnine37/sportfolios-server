@@ -7,6 +7,7 @@ import redis
 import math
 import numpy as np
 import time
+from random import randint
 
 db = firestore.client()
 portfolios = db.collection(u'portfolios')
@@ -18,6 +19,13 @@ def get_portfolio(portfolioId: str) -> dict:
     if doc is None:
         return None
     return doc.to_dict()
+
+
+def random_colour():
+    nums = [randint(0, 255), randint(0, 255), randint(0, 255)]
+    while sum(nums) > 200 * 3 or sum(nums) < 20 * 3:
+        nums = [randint(0, 255), randint(0, 255), randint(0, 255)]
+    return '#' + ''.join('{:02X}'.format(a) for a in nums)
 
 
 # def check_portfolio(portfolioId: str, uid: str) -> bool:
@@ -76,7 +84,7 @@ def push_transaction_to_firebase(purchse_form: dict) -> None:
     """
     Push the transaction to firebase
     """
-    
+
     doc = portfolios.document(purchse_form['portfolioId'])
     portfolio = doc.get()
 
@@ -90,21 +98,24 @@ def push_transaction_to_firebase(purchse_form: dict) -> None:
         raise InsufficientFundsError
 
     doc_update = {}
-    
+
     if market in portfolio['holdings']:
         newQ = np.array(portfolio['holdings'][market], dtype=np.float64) + np.array(quantity, dtype=np.float64)
 
         # they've sold their entire holdings
         if np.isclose(newQ, 0, atol=5e-3).all():
             doc_update[f'holdings.{market}'] = firestore.DELETE_FIELD
-        
+
         # they've partially sold their holdings, or bought more
         else:
             doc_update[f'holdings.{market}'] =  newQ.tolist()
-    
-    # this is a new holding 
+
+        doc_update[f'current_values.{market}'] += price
+    # this is a new holding
     else:
         doc_update[f'holdings.{market}'] =  quantity
+        doc_update[f'colours.{market}'] = random_colour()
+        doc_update[f'current_values.{market}'] = price
 
     doc_update[f'cash'] = portfolio['cash'] - price
 
@@ -211,6 +222,7 @@ class PurchaseForm:
             return {'success': True, 'price': price, 'cancelId': None}
 
         else:
+            self.form['price'] = price
             cancelId = schedule_undo_purchase(self.form)
             return {'success': False, 'price': price, 'cancelId': cancelId}
 

@@ -273,23 +273,21 @@ def create_portfolio():
         return message, code
 
     uid = info['uid']
+    un = info['name']
     name = request.form.get('name')
     public = request.form.get('public')
+    description = request.form.get('description')
 
-    logging.info('Everything fine so far')
-
-    if name is None or public is None:
-        return 'Form is missing one of the following: name, public', 400
+    if name is None or public is None or description is None:
+        return 'Form is missing one of the following: name, public, description', 400
 
     try:
         public = orjson.loads(public)
     except:
         return '"public" entry is malformed', 400
 
-    logging.info('almost there')
-
     try:
-        pid = add_new_portfolio(uid, name, public)
+        pid = add_new_portfolio(uid, un, name, public, description)
         return jsonify({'success': True, 'portfolioId': pid}), 200
     except Exception as E:
         logging.error(E)

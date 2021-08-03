@@ -25,7 +25,7 @@ class LMSRMarketMaker:
         """
         The price to make a trade q, taking the inventory vector from x to x + q
         """
-        return self.C(self.x + np.asarray(q)) - self.C(self.x)
+        return float(self.C(self.x + np.asarray(q)) - self.C(self.x))
 
     def spot_value(self, q: Union[list, np.ndarray]) -> float:
         """
