@@ -1,3 +1,4 @@
+import unidecode
 from firebase_admin import firestore
 from src.redis_utils.exceptions import ResourceNotFoundError
 import numpy as np
@@ -8,6 +9,26 @@ db = firestore.client()
 portfolios = db.collection(u'portfolios')
 users = db.collection(u'users')
 
+
+def get_search_terms(name):
+    if name is not None:
+
+        names = name.split() + [name]
+        names = names + [unidecode.unidecode(name) for name in names]
+
+        sts = []
+        for name in names:
+            for i in range(len(name)):
+                sts.append(name[:i + 1].lower().strip())
+
+        return list(set(sts))
+
+    else:
+        return []
+
+
+def get_all_search_terms(*names):
+    return list(set(sum([get_search_terms(name) for name in names], [])))
 
 def get_portfolio(portfolioId: str) -> dict:
     doc = portfolios.document(portfolioId).get()
@@ -45,6 +66,8 @@ def add_new_portfolio(uid: str, username: str, name: str, public: bool, descript
       'created': time.time(),
       'active': True,
       'colours': {'cash': '#58d31f'},
+      'comments': {},
+      'search_terms': get_all_search_terms(name, username),
     }
 
     timestamp, new_doc = portfolios.add(new_portfolio)

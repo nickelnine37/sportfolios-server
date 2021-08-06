@@ -214,7 +214,7 @@ class FirebasePortfoliosJobs:
 
         if self.t % 60 == 0:
 
-            batches = []
+            batches = [firebase.db.batch()]
 
             with Timer() as timer:
 
@@ -233,7 +233,7 @@ class FirebasePortfoliosJobs:
                     portfolio = Portfolio(portfolio_dict, self.saved_markets, self.hist_times, 500)
                     document = portfolio.get_document_update()
 
-                    if (i % 499) == 0:
+                    if (i % 499) == 498:
                         batches.append(firebase.db.batch())
 
                     batches[-1].update(firebase.portfolios_collection.document(portfolio_doc.id), document)

@@ -105,6 +105,7 @@ def push_transaction_to_firebase(purchse_form: dict) -> None:
         # they've sold their entire holdings
         if np.isclose(newQ, 0, atol=5e-3).all():
             doc_update[f'holdings.{market}'] = firestore.DELETE_FIELD
+            doc_update['markets'] = firestore.ArrayRemove([market])
 
         # they've partially sold their holdings, or bought more
         else:
@@ -116,6 +117,7 @@ def push_transaction_to_firebase(purchse_form: dict) -> None:
         doc_update[f'holdings.{market}'] =  quantity
         doc_update[f'colours.{market}'] = random_colour()
         doc_update[f'current_values.{market}'] = price
+        doc_update['markets'] = firestore.ArrayUnion([market])
 
     doc_update[f'cash'] = portfolio['cash'] - price
 
