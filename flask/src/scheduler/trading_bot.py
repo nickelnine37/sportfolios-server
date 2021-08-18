@@ -14,7 +14,7 @@ class TradingBot:
 
     def __init__(self, t: int=0) -> None:
         
-        self.B_factor = 0.25
+        self.B_factor = 0.05
         self.redis_extractor = RedisExtractor()
         self.t = t
 
@@ -110,7 +110,7 @@ class TradingBot:
             for j in range(N):
                 
                 q = intersects(j)
-                q = np.round(q - q.min(), 2)
+                q = np.round(q, 2)
                 c = cost(q)
 
                 # only make significant trades

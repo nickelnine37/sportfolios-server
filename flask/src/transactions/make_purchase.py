@@ -62,7 +62,7 @@ def undo_purchase(purchase_form: dict):
     For a given purchase form, undo the associated purchase
     """
 
-    market, quantity, team = purchase_form['market'], purchase_form['quantity'], purchase_form['team'], purchase_form['long']
+    market, quantity, team = purchase_form['market'], purchase_form['quantity'], purchase_form['team']
 
     if not redis_db.exists(market):
         raise ResourceNotFoundError

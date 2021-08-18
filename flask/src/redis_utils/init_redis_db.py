@@ -11,15 +11,12 @@ def init_redis_f():
 
     BASE_DIR = '/var/www'
 
-    with open(os.path.join(BASE_DIR, 'data', 'players.json'), 'r')  as f:
+    with open(os.path.join(BASE_DIR, 'data', 'player_N0s.json'), 'r')  as f:
         players = json.loads(f.read())
 
-    with open(os.path.join(BASE_DIR, 'data', 'teams.json'), 'r')  as f:
+    with open(os.path.join(BASE_DIR, 'data', 'team_x0s.json'), 'r')  as f:
         teams = json.loads(f.read())
 
-    # with open(os.path.join(BASE_DIR, 'data', 'time.json'), 'r')  as f:
-    #     times = json.loads(f.read())
-    
     with redis_db.pipeline() as pipe:
 
         for player_id, player_Nb in players.items():
@@ -34,13 +31,8 @@ def init_redis_f():
             pipe.set(team_id + ':hist', json.dumps({'x': {'h': [team_xb['x']], 'd': [team_xb['x']], 'w': [team_xb['x']], 'm': [team_xb['x']], 'M': [team_xb['x']]}, 
                                                     'b': {'h': [team_xb['b']], 'd': [team_xb['b']], 'w': [team_xb['b']], 'm': [team_xb['b']], 'M': [team_xb['b']]}}))
 
-        
         t = int(time.time())
         pipe.set('time', json.dumps({'h': [t], 'd': [t], 'w': [t], 'm': [t], 'M': [t]}))
 
-        # del players
-        # del teams
-
         pipe.execute()
-
 

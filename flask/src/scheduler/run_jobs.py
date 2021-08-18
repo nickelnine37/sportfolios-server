@@ -15,6 +15,8 @@ import time
 
 if __name__ == '__main__':
 
+    time.sleep(30)
+
     BASE_DIR='/var/www'
 
     logging.basicConfig(format='%(asctime)s %(threadName)s %(levelname)s %(message)s',
@@ -25,7 +27,7 @@ if __name__ == '__main__':
 
     scheduler = BlockingScheduler()
 
-    t0 = 21250
+    t0 = 0
 
     if True:
 

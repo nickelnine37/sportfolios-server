@@ -65,7 +65,7 @@ def add_new_portfolio(uid: str, username: str, name: str, public: bool, descript
       'returns_M': 0.0, 
       'created': time.time(),
       'active': True,
-      'colours': {'cash': '#58d31f'},
+      'colours': {'cash': '#00bb01'},
       'comments': {},
       'search_terms': get_all_search_terms(name, username),
     }
