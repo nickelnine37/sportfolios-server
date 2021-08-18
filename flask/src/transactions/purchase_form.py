@@ -220,8 +220,9 @@ class PurchaseForm:
 
             except Exception as E:
                 undo_purchase(self.form)
-                logging.error(str(E))
+                logging.error(str(E), exc_info=True)
 
+            logging.info(f'Purchase complete: {self.form}')
             return {'success': True, 'price': price, 'cancelId': None}
 
         else:
@@ -288,6 +289,7 @@ class ConfirmationForm:
 
             try:
                 push_transaction_to_firebase(self.old_purchase_form)
+                logging.info(f'Purchase complete: {self.old_purchase_form}')
                 return 'Order confirmed'
 
             except ResourceNotFoundError:
