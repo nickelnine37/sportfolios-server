@@ -10,69 +10,147 @@ import orjson
 import json
 
 
+def transform(m):
+    random_choice = np.random.uniform(0, 1)
+    random_uniform = np.random.uniform(1, 3)
+    if random_choice < 0.5:
+        def exponential_negative(factor, x):
+            return np.exp(factor * ((x[-1] - x) / (x[-1] - x[0]) - 1))
+        exponential_dist = exponential_negative(factor=random_uniform,
+                                                x=np.arange(start=int(len(m) + 1), stop=1, step=-1))
+    else:
+        def exponential_positive(factor, x):
+            return np.exp(factor * ((x - x[0]) / (x[-1] - x[0]) - 1))
+        exponential_dist = exponential_positive(factor=random_uniform,
+                                                x=np.arange(start=int(len(m) + 1), stop=1, step=-1))
+    return np.asarray((m * exponential_dist) / sum(m * exponential_dist))
+
+
 class TradingBot:
 
-    def __init__(self, t: int=0) -> None:
+    def __init__(self, t: int=0, trade_noise: bool=True) -> None:
+        """
+        Initialise a trading bot. This object will select random markets to make trades in. trade_noise optionally
+        adds some random purturbation to the trade probability
+        """
         
-        self.B_factor = 0.05
+        self.B_factor = 0.01
+        self.trade_noise = trade_noise
+        self.noise_level = 0.05
         self.redis_extractor = RedisExtractor()
         self.t = t
 
+    def select_players(self) -> zip:
+        """
+        Returns a zipped object containing: the slected player market names; the current m; and the current holding
+        """
+
+        with open('/var/www/data/player_ms.json') as f:
+            player_ms = orjson.loads(f.read())
+
+        n_select = len(player_ms) // 6
+        selected_players = np.random.choice(list(player_ms.keys()), size=n_select, replace=False).tolist()
+        player_holdings = self.redis_extractor.get_current_holdings(selected_players)
+
+        # add some gaussian noise onto the m-level, but ensure its between 0.005 and 0.995
+        if self.trade_noise:
+            ms = np.array([player_ms[player] for player in selected_players])
+            noise = np.random.normal(loc=0, scale=self.noise_level, size=n_select)
+            ms = np.clip(ms + noise, a_min=0.005, a_max=0.995).tolist()
+        else:
+            ms = [player_ms[player] for player in selected_players]
+
+        return zip(selected_players, ms, player_holdings)
+
+    def select_teams(self) -> zip:
+        """
+        Returns a zipped object containing: the slected team market names; the current m; and the current holding
+        """
+
+        with open('/var/www/data/team_ms.json') as f:
+            team_ms = orjson.loads(f.read())
+
+        selected_teams = np.random.choice(list(team_ms.keys()), size=len(team_ms) // 6, replace=False).tolist()
+        team_holdings = self.redis_extractor.get_current_holdings(selected_teams)
+
+        if self.trade_noise:
+            ms = [transform(np.asarray(team_ms[team])) for team in selected_teams]
+            # ms = [np.asarray(team_ms[team]) for team in selected_teams]
+        else:
+            ms = [team_ms[team] for team in selected_teams]
+
+        return zip(selected_teams, ms, team_holdings)
+
+    def trade_players(self) -> list:
+        """
+        Select player and make trades. Return dict with trade details
+        """
+
+        trades = []
+        new_holdings = {}
+
+        for market, current_m, current_holdings in self.select_teams():
+
+            trade = self.optimal_trade_team(market, current_m, current_holdings)
+
+            if trade['cost'] != 0:
+                trades.append(trade)
+                new_holdings[market] = {'x': (np.asarray(current_holdings['x']) + np.asarray(trade['quantity'])).tolist(), 'b': current_holdings['b']}
+
+        self.redis_extractor.write_current_holdings(new_holdings)
+
+        return trades
+
+    def trade_teams(self) -> list:
+        """
+        Select teams and make trades. Return dict with trade details
+        """
+
+        trades = []
+        new_holdings = {}
+
+        for market, current_m, current_holdings in self.select_players():
+
+            trade = self.optimal_trade_player(market, current_m, current_holdings)
+
+            if trade['cost'] != 0:
+                trades.append(trade)
+                new_holdings[market] = {'N': current_holdings['N'] + trade['quantity'] * (-1) ** (~trade['long']), 'b': current_holdings['b']}
+
+        self.redis_extractor.write_current_holdings(new_holdings)
+
+        return trades
+
     def trade(self):
+        """
+        If the time is right, exectute some trades
+        """
 
         if self.t % 10 == 2:
 
-            with open('/var/www/data/player_ms.json') as f:
-                player_ms = orjson.loads(f.read())
-
-            with open('/var/www/data/team_ms.json') as f:
-                team_ms = orjson.loads(f.read())
-
-            trades = []
-
             with Timer() as player_timer:
-                
-                selected_players = np.random.choice(list(player_ms.keys()), size=len(player_ms) // 6, replace=False).tolist()
-                player_holdings = self.redis_extractor.get_current_holdings(selected_players)
-                
-                for player, current_holdings in zip(selected_players, player_holdings):
-
-                    trade = self.optimal_trade_player(player, player_ms[player], current_holdings['N'], current_holdings['b'])
-                    if trade['cost'] != 0:
-                        current_holdings['N'] += trade['quantity'] * (-1) ** (~trade['long'])
-                        trades.append(trade)
+                team_trades = self.trade_teams()
 
             with Timer() as team_timer:
-                
-                selected_teams = np.random.choice(list(team_ms.keys()), size=len(team_ms) // 6, replace=False).tolist()
-                team_holdings = self.redis_extractor.get_current_holdings(selected_teams)
+                player_trades = self.trade_players()
 
-                for team, current_holdings in zip(selected_teams, team_holdings):
-                    
-                    trade = self.optimal_trade_team(team, team_ms[team], current_holdings['x'], current_holdings['b'])
+            with open(f'/var/www/logs/trades/{int(time.time())}.json', 'w') as f:
+                json.dump(team_trades + player_trades, f)
 
-                    if trade['cost'] != 0:
-                        current_holdings['x'] = (np.asarray(current_holdings['x']) + np.asarray(trade['quantity'])).tolist()
-                        trades.append(trade)
-
-            with Timer() as redis_timer:
-                
-                # these should have been edited in-place for memory efficiency
-                self.redis_extractor.write_current_holdings(selected_players + selected_teams, player_holdings + team_holdings)
-
-                with open(f'/var/www/logs/trades/{int(time.time())}.json', 'w') as f:
-                    json.dump(trades, f)
-
-            logging.info(f'TRADING BOT: t = {self.t}. Player time: {player_timer.t:.4f}. Team time: {team_timer.t:.4f}. Redis time: {redis_timer.t:.4f}')
+            logging.info(f'TRADING BOT: t = {self.t}. Player time: {player_timer.t:.4f}. Team time: {team_timer.t:.4f}')
         
         self.t += 2
 
 
-    def optimal_trade_team(self, market: str, m: Union[list, np.ndarray], x: Union[list, np.ndarray], b: float):
+    def optimal_trade_team(self, market: str, m: Union[list, np.ndarray], holdings: dict):
+        """
+        Find the optimal trade for a team, given a probability vector m and the current holdings
+        """
 
         try:
             m = np.asarray(m)
-            x = np.asarray(x)
+            x = np.asarray(holdings['x'])
+            b = holdings['b']
             B = self.B_factor * b
 
             # regular C function
@@ -125,10 +203,14 @@ class TradingBot:
             return {'market': market, 'quantity': 0, 'cost': 0, 'long': None}
 
 
-    def optimal_trade_player(self, market: str, m: float, N: float, b: float):
+    def optimal_trade_player(self, market: str, m: float, holdings: dict):
+        """
+        Find the optimal trade for a player given their expected finishing fraction m, and the current holdings
+        """
 
         assert 0 <= m <= 1
 
+        N, b = holdings['N'], holdings['b']
         market_maker = LongShortMarketMaker(market, N, b)
 
         # the market price already reflects our belief, so make no trade

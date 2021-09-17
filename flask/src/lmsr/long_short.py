@@ -26,14 +26,18 @@ class LongShortMarketMaker:
 
     def price_trade(self, q: Union[list, np.ndarray]) -> float:
         """
-        price of going long with n units on player
+        Price a trade for vector quantity q, where q[0] is the number of longs and q[1] is the number of shorts
         """
+
 
         N = self.N
         b = self.b
         
         def f(n):
-            
+            """
+            price of going long with n units on player
+            """
+
             if n == 0:
                 return 0
 
@@ -61,7 +65,7 @@ class LongShortMarketMaker:
 
     def spot_value(self, q: Union[list, np.ndarray]) -> float:
         """
-        Instantaneous price of long on player
+        Instantaneous price for vector quantity q, where q[0] is the number of longs and q[1] is the number of shorts
         """
 
         cMin = min(q)

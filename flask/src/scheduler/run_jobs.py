@@ -27,7 +27,7 @@ if __name__ == '__main__':
 
     scheduler = BlockingScheduler()
 
-    t0 = 0
+    t0 = 44658
 
     if True:
 

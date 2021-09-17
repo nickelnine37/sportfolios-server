@@ -23,6 +23,12 @@ logging.basicConfig(format='%(asctime)s %(threadName)s %(levelname)s %(message)s
 
 app = Flask(__name__)
 
+@app.route('/privacy_policy', methods=['GET'])
+def privacy():
+    with open(os.path.join(BASE_DIR, 'privacy_policy.html')) as f:
+        html = f.read()
+    return html, 200
+
 
 # ----------------------------------------------------------------------------
 # ----------------------------- CLIENT ENDPOINTS -----------------------------

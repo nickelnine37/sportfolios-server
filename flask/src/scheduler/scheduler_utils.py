@@ -80,9 +80,9 @@ class RedisExtractor:
 
             pipe.execute()
 
-    def write_current_holdings(self, markets: list, all_current_new: list) -> None:
+    def write_current_holdings(self, all_current_new: dict) -> None:
         """
-        Given a new dictionary mapping string market to historical holdings dict, send this to redis
+        Given a new dictionary mapping string market to current holdings dict, send this to redis
         """
 
         with self.redis_db.pipeline() as pipe:

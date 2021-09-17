@@ -36,7 +36,7 @@ class RedisJobs:
         self.t = t
         self.max_interval = max_interval
         self.max_interval_needs_doubling = False
-        self.add_noise = add_noise
+        # self.add_noise = add_noise
 
 
     def get_timeframes(self):
@@ -114,11 +114,11 @@ class RedisJobs:
 
                 else:
                     
-                    if self.add_noise:
-                        if team:
-                            current['x'] = np.round(np.array(current['x']) + np.random.normal(loc=np.linspace(0, current['b'] / 10000 , len(current['x'])), scale= current['b'] / 100), 2).tolist()
-                        else:
-                            current['N'] = float(np.round(current['N'] + np.random.normal(loc=current['b'] / 10000, scale=current['b'] / 100), 2))
+                    # if self.add_noise:
+                    #     if team:
+                    #         current['x'] = np.round(np.array(current['x']) + np.random.normal(loc=0, scale= current['b'] / 500, size=len(current['x'])), 2).tolist()
+                    #     else:
+                    #         current['N'] = float(np.round(current['N'] + np.random.normal(loc=0, scale=current['b'] / 500), 2))
 
                     for timeframe in timeframes:
                         hist = self.get_new_historical_holdings(timeframe, current, hist, team)
@@ -127,8 +127,8 @@ class RedisJobs:
 
         with Timer() as redis2_timer:
             self.redis_extractor.write_historical_holdings(hist_new)
-            if self.add_noise:
-                self.redis_extractor.write_current_holdings(markets, all_current)
+            # if self.add_noise:
+            #     self.redis_extractor.write_current_holdings(markets, all_current)
 
 
         
