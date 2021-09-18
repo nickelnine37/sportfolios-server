@@ -153,16 +153,13 @@ class Portfolio:
 
 class FirebasePortfoliosJobs:
 
-    def __init__(self, t: int=0):
+    def __init__(self):
         
         self.redis_extractor = RedisExtractor()
-        self.t = t
         self.saved_markets = {}
 
-        self.timeframes = ['d', 'w', 'm', 'M']
-
         times = self.redis_extractor.get_time()
-        self.hist_times = np.array([times[tf][0] for tf in self.timeframes])
+        self.hist_times = np.array([times[tf][0] for tf in ['d', 'w', 'm', 'M']])
 
         self.cpu_time = 0
         self.redis_time = 0
@@ -210,46 +207,46 @@ class FirebasePortfoliosJobs:
         self.cpu_time += cpu_timer.t
 
  
-    def update_all_portfolios(self):
+    def update_all_portfolios(self, t: int):
 
-        if self.t % 60 == 0:
 
-            batches = [firebase.db.batch()]
+        # set this back to empty
+        self.saved_markets = {}
 
-            with Timer() as timer:
+        batches = [firebase.db.batch()]#
 
-                # no need to do anything fancier here, this should be the most memory efficient way to do it
-                # however, there may be some timeout operation???
-                for i, portfolio_doc in enumerate(firebase.portfolios_collection.stream()):
-                    
-                    portfolio_dict = portfolio_doc.to_dict()
-                    markets = list(set([transaction['market'] for transaction in portfolio_dict['transactions']]))
-                    
-                    # no markets, just carry on 
-                    if len(markets) == 0:
-                        continue
+        with Timer() as timer:
 
-                    self.add_to_saved_markets(markets)
-                    portfolio = Portfolio(portfolio_dict, self.saved_markets, self.hist_times, 500)
-                    document = portfolio.get_document_update()
+            # no need to do anything fancier here, this should be the most memory efficient way to do it
+            # however, there may be some timeout operation???
+            for i, portfolio_doc in enumerate(firebase.portfolios_collection.stream()):
 
-                    if (i % 499) == 498:
-                        batches.append(firebase.db.batch())
+                portfolio_dict = portfolio_doc.to_dict()
+                markets = list(set([transaction['market'] for transaction in portfolio_dict['transactions']]))
 
-                    batches[-1].update(firebase.portfolios_collection.document(portfolio_doc.id), document)
-                    
-                # execute firebase batch commits on seperate threads
-                with ThreadPoolExecutor(max_workers=os.cpu_count() + 4) as executor:
-                    executor.map(lambda batch: batch.commit(), batches)
+                # no markets, just carry on
+                if len(markets) == 0:
+                    continue
 
-            
-            # set this back to empty
-            self.saved_markets = {}
+                self.add_to_saved_markets(markets)
 
-            logging.info(f'FIREBASE PORTFOLIOS t = {self.t}. Completed update. time: {timer.t:.4f}s \t redis time: {self.redis_time:.4f}s \t cpu time: {self.cpu_time:.4f}s \t firebase time: {timer.t - self.redis_time - self.cpu_time:.4f}s')
+                document = Portfolio(portfolio_dict=portfolio_dict,
+                                     market_pool=self.saved_markets,
+                                     hist_times=self.hist_times,
+                                     c0=500).get_document_update()
 
-        self.t += 2
-        
+                if (i % 499) == 498:
+                    batches.append(firebase.db.batch())
+
+                batches[-1].update(firebase.portfolios_collection.document(portfolio_doc.id), document)
+
+            # execute firebase batch commits on seperate threads
+            with ThreadPoolExecutor(max_workers=os.cpu_count() + 4) as executor:
+                executor.map(lambda batch: batch.commit(), batches)
+
+        logging.info(f'FIREBASE PORTFOLIOS t = {t}. Completed update. time: {timer.t:.4f}s \t redis time: {self.redis_time:.4f}s \t cpu time: {self.cpu_time:.4f}s \t firebase time: {timer.t - self.redis_time - self.cpu_time:.4f}s')
+
+
 
 
     

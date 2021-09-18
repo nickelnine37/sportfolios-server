@@ -3,6 +3,7 @@ import time
 import redis
 import orjson
 from firebase_admin import credentials, firestore, initialize_app
+from typing import Tuple, List
 
 class Timer:
     """
@@ -40,7 +41,7 @@ class RedisExtractor:
     def __init__(self):
         self.redis_db = redis.Redis(host='redis', port=6379, db=0)
 
-    def get_current_and_historical_holdings(self, markets: list):
+    def get_current_and_historical_holdings(self, markets: list) -> Tuple[List[dict], List[dict]]:
         """
         Get the raw (string) curent and historical holdings for a list of markets
         """
@@ -87,7 +88,7 @@ class RedisExtractor:
 
         with self.redis_db.pipeline() as pipe:
 
-            for market, current_new in zip(markets, all_current_new):
+            for market, current_new in all_current_new.items():
                 pipe.set(market, orjson.dumps(current_new))
 
             pipe.execute()

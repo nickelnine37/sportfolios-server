@@ -1,3 +1,4 @@
+import os
 from os import replace
 from scheduler_utils import RedisExtractor, Timer
 import numpy as np
@@ -8,27 +9,30 @@ from typing import Union
 import time
 import orjson
 import json
+from datetime import datetime
 
 
-def transform(m):
-    random_choice = np.random.uniform(0, 1)
-    random_uniform = np.random.uniform(1, 3)
-    if random_choice < 0.5:
-        def exponential_negative(factor, x):
-            return np.exp(factor * ((x[-1] - x) / (x[-1] - x[0]) - 1))
-        exponential_dist = exponential_negative(factor=random_uniform,
-                                                x=np.arange(start=int(len(m) + 1), stop=1, step=-1))
+
+
+def transform(m: np.ndarray):
+    """
+    Take a probability mass vector m, and make a small transform such that
+    the probability is somewhat shifted.
+    """
+
+    x = np.arange(start=int(len(m) + 1), stop=1, step=-1)
+
+    if np.random.uniform(0, 1) < 0.5:
+        out = m * np.exp(np.random.uniform(1, 3) * ((x[-1] - x) / (x[-1] - x[0]) - 1))
     else:
-        def exponential_positive(factor, x):
-            return np.exp(factor * ((x - x[0]) / (x[-1] - x[0]) - 1))
-        exponential_dist = exponential_positive(factor=random_uniform,
-                                                x=np.arange(start=int(len(m) + 1), stop=1, step=-1))
-    return np.asarray((m * exponential_dist) / sum(m * exponential_dist))
+        out = m * np.exp(np.random.uniform(1, 3) * ((x - x[0]) / (x[-1] - x[0]) - 1))
+
+    return out / out.sum()
 
 
 class TradingBot:
 
-    def __init__(self, t: int=0, trade_noise: bool=True) -> None:
+    def __init__(self, trade_noise: bool=True) -> None:
         """
         Initialise a trading bot. This object will select random markets to make trades in. trade_noise optionally
         adds some random purturbation to the trade probability
@@ -38,7 +42,6 @@ class TradingBot:
         self.trade_noise = trade_noise
         self.noise_level = 0.05
         self.redis_extractor = RedisExtractor()
-        self.t = t
 
     def select_players(self) -> zip:
         """
@@ -75,7 +78,6 @@ class TradingBot:
 
         if self.trade_noise:
             ms = [transform(np.asarray(team_ms[team])) for team in selected_teams]
-            # ms = [np.asarray(team_ms[team]) for team in selected_teams]
         else:
             ms = [team_ms[team] for team in selected_teams]
 
@@ -121,25 +123,31 @@ class TradingBot:
 
         return trades
 
-    def trade(self):
+    def trade(self, t: int):
         """
         If the time is right, exectute some trades
         """
 
-        if self.t % 10 == 2:
+        with Timer() as team_timer:
+            team_trades = self.trade_teams()
 
-            with Timer() as player_timer:
-                team_trades = self.trade_teams()
+        with Timer() as player_timer:
+            player_trades = self.trade_players()
 
-            with Timer() as team_timer:
-                player_trades = self.trade_players()
+        date = datetime.today().date()
+        date_folder = f'/var/www/logs/trades/{date.day}_{date.month}_{date.year}'
 
-            with open(f'/var/www/logs/trades/{int(time.time())}.json', 'w') as f:
-                json.dump(team_trades + player_trades, f)
+        if not os.path.isdir(date_folder):
+            os.mkdir(date_folder)
 
-            logging.info(f'TRADING BOT: t = {self.t}. Player time: {player_timer.t:.4f}. Team time: {team_timer.t:.4f}')
+        with open(f'{date_folder}/{int(time.time())}.json', 'w') as f:
+            json.dump(team_trades + player_trades, f)
+
+        logging.info(f'TRADING BOT: t = {t}. Player time: {player_timer.t:.4f}. Team time: {team_timer.t:.4f}')
+
+
+
         
-        self.t += 2
 
 
     def optimal_trade_team(self, market: str, m: Union[list, np.ndarray], holdings: dict):
@@ -222,7 +230,10 @@ class TradingBot:
 
         try:
             # how many longs would we need to buy to shift the whole market to our belief?
-            n0 = brentq(lambda n: LongShortMarketMaker(market, n, b).spot_value([1, 0]) - m, -40 * b, 40 * b) - N
+            try:
+                n0 = brentq(lambda n: LongShortMarketMaker(market, N + n, b).spot_value([1, 0]) - m, -40 * b, 40 * b)
+            except ValueError:
+                n0 = brentq(lambda n: LongShortMarketMaker(market, N + n, b).spot_value([1, 0]) - m, -400 * b, 400 * b)
 
             # we should buy longs
             if n0 >= 0:
@@ -256,5 +267,5 @@ class TradingBot:
                     return {'market': market, 'quantity': float(round(-n0, 2)), 'team': False, 'long': False, 'cost': float(round(cost, 2))}
             
         except Exception as E:
-            logging.error(f'TRADING BOT failed for {market}: {E}')
+            logging.error(f'TRADING BOT failed for {market}: {E}. N: {N}, b: {b}, m: {m}')
             return {'market': market, 'quantity': 0, 'team': False, 'long': True, 'cost': 0}

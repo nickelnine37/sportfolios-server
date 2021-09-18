@@ -11,23 +11,31 @@ from scheduler_utils import Timer, RedisExtractor, firebase
 
 
 class FirebaseMarketJobs:
+    """
+    Class for updating information about the price of the long for firebase teams and players
 
-    def __init__(self, t: int=0):
+    Responsibilities:
+        * Push the current long price
+        * Push the long returns over different time horizons from d+
+        * Push a mini time-series for the long price over different time horizons from d+
 
+    To be run once an hour
+    """
+
+    def __init__(self):
         self.redis_extractor = RedisExtractor()
-        self.t = t
 
 
-    def get_timeframes(self) -> list:
+    def get_timeframes(self, t: int) -> list:
         """
         For a particular number of minutes, t, return the time horizons that we are interested in
         """
 
         out = []
 
-        if self.t % 60 == 0:
+        if t % 60 == 30:
             out.append('d')
-        if (self.t % (60 * 24)) == 0:
+        if (t % (60 * 24)) == 30:
             out += ['w', 'm', 'M']
 
         return out
@@ -131,44 +139,41 @@ class FirebaseMarketJobs:
         return batches
 
 
-    def update_all_markets(self):
+    def update_all_markets(self, t: int):
         """
         Run through all markets and make the necessary updates to firebase
         """
 
-        if self.t % 60 == 0:
+        timeframes = self.get_timeframes(t)
 
-            timeframes = self.get_timeframes()
+        all_batches = []
 
-            all_batches = []
+        with Timer() as cpu_timer:
 
-            with Timer() as cpu_timer:
+            with Timer() as team_timer:
 
-                with Timer() as team_timer:
+                with open('/var/www/data/teams.txt', 'r') as f:
+                    all_teams = f.read().splitlines()
 
-                    with open('/var/www/data/teams.txt', 'r') as f:
-                        all_teams = f.read().splitlines()
+                # split on league, so all xs have the same length
+                for leagueId, teams in groupby(all_teams, key=lambda player: player.split(':')[1]):
+                    all_batches += self.get_document_batches(list(teams), timeframes, team=True)
 
-                    # split on league, so all xs have the same length
-                    for leagueId, teams in groupby(all_teams, key=lambda player: player.split(':')[1]):
-                        all_batches += self.get_document_batches(list(teams), timeframes, team=True)
+            with Timer() as player_timer:
 
-                with Timer() as player_timer:
-                    
-                    with open('/var/www/data/players.txt', 'r') as f:
-                        all_players = f.read().splitlines()
+                with open('/var/www/data/players.txt', 'r') as f:
+                    all_players = f.read().splitlines()
 
-                    # split on league, just so we maintain a reasonable number of markets at a time
-                    for leagueId, players in groupby(all_players, key=lambda player: player.split(':')[1]):
-                        all_batches += self.get_document_batches(list(players), timeframes, team=False)
-                        
-            with Timer() as firebase_timer:
-                
-                # execute firebase batch commits on seperate threads
-                with ThreadPoolExecutor(max_workers=os.cpu_count() + 4) as executor:
-                    executor.map(lambda batch: batch.commit(), all_batches)
+                # split on league, just so we maintain a reasonable number of markets at a time
+                for leagueId, players in groupby(all_players, key=lambda player: player.split(':')[1]):
+                    all_batches += self.get_document_batches(list(players), timeframes, team=False)
 
-            
-            logging.info(f'FIREBASE MARKETS t = {self.t}. Completed update for timeframes {timeframes}. time: {cpu_timer.t + firebase_timer.t:.4f}s \t team time: {team_timer.t:.4f}s \t player time: {player_timer.t:.4f}s \t cpu time: {cpu_timer.t:.4f}s \t firebase time: {firebase_timer.t:.4f}s')
+        with Timer() as firebase_timer:
 
-        self.t += 2
+            # execute firebase batch commits on seperate threads
+            with ThreadPoolExecutor(max_workers=os.cpu_count() + 4) as executor:
+                executor.map(lambda batch: batch.commit(), all_batches)
+
+
+        logging.info(f'FIREBASE MARKETS t = {t}. Completed update for timeframes {timeframes}. time: {cpu_timer.t + firebase_timer.t:.4f}s \t team time: {team_timer.t:.4f}s \t player time: {player_timer.t:.4f}s \t cpu time: {cpu_timer.t:.4f}s \t firebase time: {firebase_timer.t:.4f}s')
+
