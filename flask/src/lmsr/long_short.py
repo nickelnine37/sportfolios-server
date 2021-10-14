@@ -29,7 +29,6 @@ class LongShortMarketMaker:
         Price a trade for vector quantity q, where q[0] is the number of longs and q[1] is the number of shorts
         """
 
-
         N = self.N
         b = self.b
         

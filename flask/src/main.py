@@ -1,8 +1,12 @@
+import json
 import os
 import logging
+import time
+
 from src.firebase.data import add_new_portfolio
 from flask import Flask, request, jsonify
 import orjson
+import shutil
 
 # LOAD THIS FIRST TO ACCESS FIREBASE STUFF
 from src.firebase.authentication import verify_user_token, verify_admin
@@ -12,7 +16,7 @@ from src.redis_utils.update import  update_b_redis
 import src.redis_utils.read_data as read_data
 from src.redis_utils.exceptions import ResourceNotFoundError
 from src.transactions.purchase_form import ConfirmationForm, ConfirmationFormError, PurchaseForm, PurchaseFormError, TransactionError
-
+from src.transactions.make_purchase import make_purchase
 
 BASE_DIR='/var/www'
 
@@ -347,7 +351,85 @@ def update_b():
     return f'set {market} b to {b}'
 
 
+@app.route('/update_ms', methods=['POST'])
+def update_ms():
 
+    if request.headers.get('Authorization') is None:
+        return f'Authorization ID needed', 407
+
+    success, message = verify_admin(request.headers.get('Authorization'))
+    remote_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
+
+    if not success:
+        return message
+
+    ms_type = request.form['type']
+
+    if ms_type == 'player':
+        ms_file = 'player_ms.json'
+
+    elif ms_type == 'team':
+        ms_file = 'team_ms.json'
+    else:
+        return 'Invalid type', 400
+
+    try:
+
+        ms = json.loads(request.form['ms'])
+        t = int(time.time())
+
+        if not os.path.exists(os.path.join(BASE_DIR, 'data', 'old', str(t))):
+            os.mkdir(os.path.join(BASE_DIR, 'data', 'old', str(t)))
+
+        shutil.move(os.path.join(BASE_DIR, 'data', ms_file), os.path.join(BASE_DIR, 'data', 'old', str(t), ms_file))
+
+        with open(os.path.join(BASE_DIR, 'data', ms_file), 'w') as f:
+            f.write(json.dumps(ms))
+
+    except Exception as E:
+        return str(E), 400
+
+    return 'Success', 200
+
+
+@app.route('/admin_trade', methods=['POST'])
+def admin_trade():
+
+    if request.headers.get('Authorization') is None:
+        return f'Authorization ID needed', 407
+
+    success, message = verify_admin(request.headers.get('Authorization'))
+
+    if not success:
+        return message, 400
+
+    market = request.form.get('market')
+    quantity = request.form.get('quantity')
+
+    if market is None or quantity is None:
+        return 'Malformed form', 400
+
+    try:
+        quantity = json.loads(quantity)
+    except:
+        return 'Malformed quantity', 400
+
+    if 'T' in market:
+
+        price = make_purchase({"market": market, "quantity": quantity, "team": True})
+        trade = {"market": market, "quantity": quantity, "team": True, "cost": price, "long": None}
+
+    elif 'P' in market:
+        price = make_purchase({"market": market, "quantity": quantity, "team": False})
+        trade = {"market": market, "quantity": quantity, "team": False, "cost": price, "long": None}
+
+    else:
+        return 'Malformed market', 400
+
+    with open(f'/var/www/logs/trades/custom/{int(time.time())}.json', 'w') as f:
+        f.write(json.dumps(trade))
+
+    return jsonify(trade), 200
 
 
 if __name__ == '__main__':

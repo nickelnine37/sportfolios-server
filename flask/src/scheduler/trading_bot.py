@@ -12,20 +12,40 @@ import json
 from datetime import datetime
 
 
-
-
-def transform(m: np.ndarray):
+def transform(m: np.ndarray, alpha: float=0.05):
     """
     Take a probability mass vector m, and make a small transform such that
-    the probability is somewhat shifted.
+    the probability mean is shifted based on alpha value.
     """
 
-    x = np.arange(start=int(len(m) + 1), stop=1, step=-1)
+    N = len(m)
+    exponential_dist = np.exp(np.random.normal(0, alpha, N))
+    out = m * exponential_dist
 
-    if np.random.uniform(0, 1) < 0.5:
-        out = m * np.exp(np.random.uniform(1, 3) * ((x[-1] - x) / (x[-1] - x[0]) - 1))
-    else:
-        out = m * np.exp(np.random.uniform(1, 3) * ((x - x[0]) / (x[-1] - x[0]) - 1))
+    # x =  np.arange(start=N, stop=0, step=-1)
+    # mean_position = np.sum(m * x)
+    #
+    # if np.random.uniform(0, 1) < 0.5:
+    #
+    #     def exponential(factor, x):
+    #         return np.exp(factor * ((x[-1] - x) / (x[-1] - x[0]) - 1))
+    #
+    #     def optimise_exp(factor):
+    #         f = m * exponential(factor, x)
+    #         return mean_position - np.sum(f / f.sum() *  x) + alpha * N
+    #
+    # else:
+    #
+    #     def exponential(factor, x):
+    #         return np.exp(factor * ((x - x[0]) / (x[-1] - x[0]) - 1))
+    #
+    #     def optimise_exp(factor):
+    #         f = m * exponential(factor, x)
+    #         return mean_position - np.sum(f / f.sum() *  x) - alpha * N
+    #
+    # factor = np.abs(np.random.normal(loc=0, scale=factor_finder(optimise_exp)))
+    # exponential_dist = exponential(factor=factor, x=x)
+    # out = m * exponential_dist
 
     return out / out.sum()
 
@@ -77,19 +97,20 @@ class TradingBot:
         team_holdings = self.redis_extractor.get_current_holdings(selected_teams)
 
         if self.trade_noise:
-            ms = [transform(np.asarray(team_ms[team])) for team in selected_teams]
+            ms = [transform(np.asarray(team_ms[team]), self.noise_level) for team in selected_teams]
         else:
             ms = [team_ms[team] for team in selected_teams]
 
         return zip(selected_teams, ms, team_holdings)
 
-    def trade_players(self) -> list:
+    def trade_teams(self) -> list:
         """
         Select player and make trades. Return dict with trade details
         """
 
         trades = []
         new_holdings = {}
+        aborted_trades = []
 
         for market, current_m, current_holdings in self.select_teams():
 
@@ -98,12 +119,14 @@ class TradingBot:
             if trade['cost'] != 0:
                 trades.append(trade)
                 new_holdings[market] = {'x': (np.asarray(current_holdings['x']) + np.asarray(trade['quantity'])).tolist(), 'b': current_holdings['b']}
+            else:
+                aborted_trades.append(market)
 
         self.redis_extractor.write_current_holdings(new_holdings)
 
         return trades
 
-    def trade_teams(self) -> list:
+    def trade_players(self) -> list:
         """
         Select teams and make trades. Return dict with trade details
         """
@@ -144,10 +167,6 @@ class TradingBot:
             json.dump(team_trades + player_trades, f)
 
         logging.info(f'TRADING BOT: t = {t}. Player time: {player_timer.t:.4f}. Team time: {team_timer.t:.4f}')
-
-
-
-        
 
 
     def optimal_trade_team(self, market: str, m: Union[list, np.ndarray], holdings: dict):
@@ -200,7 +219,7 @@ class TradingBot:
                 c = cost(q)
 
                 # only make significant trades
-                if c < 10:
+                if c < 0.5:
                     return {'market': market, 'quantity': 0, 'cost': 0, 'long': None}
                                 
                 if (q >= 0).all():
