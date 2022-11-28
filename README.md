@@ -43,3 +43,4 @@ flask
   - blah.json                  # firebase admin sdk config file
 ```
 
+Please note that the Firebase admin key condiguration file is no longer usable.  
