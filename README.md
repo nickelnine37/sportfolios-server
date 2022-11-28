@@ -1,6 +1,6 @@
-# Sportfolios-alpha-server
+# SportFolios Server
 
-This repository contains the code and configuration file to run the alpha server. The server consists of a single VM, holding four docker containers. They are 
+This repository contains the code and configuration file to run the primary server. This consists of a machine, running four docker containers. They are 
 
 ### 1. An NGINX web server and reverse proxy
 
